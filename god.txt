@@ -1,1 +1,10 @@
 This is my first commit
+CI/CD Pipelines in Kubernetes: Integrating Kubernetes with CI/CD tools like Jenkins and Tekton.
+Vulnerability Scanning: Using tools like Trivy for scanning container images for vulnerabilities.
+Cloud Integration: Deploying and managing Kubernetes clusters on cloud providers such as AWS (EKS)
+Helm: Utilizing Helm for packaging, deploying, and managing Kubernetes applications.
+Network Policies: Restricting traffic between pods and controlling communication flows
+Persistent Volumes (PVs): Understanding the concept of volumes, Persistent Volume Claims (PVCs), and storage classes.
+StatefulSets: Managing stateful applications that require persistent storage.
+Knowledge of application Operators
+Service Meshes: Integrating service mesh technologies like Istio to manage microservice communications within Kubernetes.
