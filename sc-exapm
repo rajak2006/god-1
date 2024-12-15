@@ -1,0 +1,28 @@
+god@jumbox:~/data/god-1$ ./sc.sh
+/home/god/data/god-1
+Commit description: sivs sivs
+On branch siva
+Your branch is up to date with 'origin/siva'.
+
+nothing to commit, working tree clean
+wanna do some pushin?
+yes
+* siva
+What Branch?
+siva
+Where to? You can say origin, staging, or production
+origin
+Everything up-to-date
+More?
+yes
+* siva
+What Branch?
+siva
+Where to? You can say origin, staging, or production
+origin
+Everything up-to-date
+More?
+no
+Goodbye
+god@jumbox:~/data/god-1$
+
