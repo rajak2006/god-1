@@ -3,3 +3,4 @@ second test
 Thired sivs sisv
 testa om om siva
 script test`
+for f in $(git status --porcelain | sed "s/^...//");do git add $f; git commit -sam "commit message - $f";git push origin siva;done
