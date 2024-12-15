@@ -53,3 +53,13 @@ tput setaf 2;echo  wanna do some pushin?;tput sgr0
 read -r push 
 if [ "$push" = "yes" ]
 then 
+    pushing # you know this function 
+    until [ "$more" = "no" ]
+    do
+        more # you know this function
+    done
+elif [ "$push" = "no" ]
+then
+    echo "Okay" 
+else die "$KILL"
+fi
