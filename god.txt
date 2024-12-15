@@ -4,3 +4,7 @@ Thired sivs sisv
 testa om om siva
 script test`
 for f in $(git status --porcelain | sed "s/^...//");do git add $f; git commit -sam "commit message - $f";git push origin siva;done
+i have this setup like this
+
+echo "alias commit='sh /path/to/script.sh" >> ~/.bash_profile source ~/.bash_profile
+
