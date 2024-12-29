@@ -23,7 +23,8 @@ rate(kubelet_http_requests_total{job="kubelet"}[$__rate_interval])
 Reference Documentation for other Functions:
 https://prometheus.io/docs/prometheus/latest/querying/functions
 
-
+https://sbcode.net/grafana/dashboard-variables/
+https://signoz.io/guides/how-to-make-grafana-template-variable-reference-another-variable-prometheus-datasource/
 
 This is my first commit
 CI/CD Pipelines in Kubernetes: Integrating Kubernetes with CI/CD tools like Jenkins and Tekton.
