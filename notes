@@ -1,0 +1,33 @@
+https://medium.com/@kayvan.sol2/spark-on-kubernetes-d566158186c6
+
+kubectl exec -it kayvan-release-spark-master-0 -- ./bin/spark-submit \
+ --class org.apache.spark.examples.SparkPi \
+ --master spark://kayvan-release-spark-master-0.kayvan-release-spark-headless.default.svc.cluster.local:7077 \
+ ./examples/jars/spark-examples_2.12–3.4.1.jar 1000
+
+
+https://github.com/apache/spark/blob/master/examples/src/main/scala/org/apache/spark/examples/SparkPi.scala
+
+https://github.com/apache/spark/blob/master/examples/src/main/python/pi.py
+
+https://github.com/apache/spark/blob/master/examples/src/main/python/wordcount.py
+
+kubectl exec -it kayvan-release-spark-master-0 -- /bin/bash
+
+
+./bin/spark-submit \
+ --class org.apache.spark.examples.SparkPi \
+ --master spark://kayvan-release-spark-master-0.kayvan-release-spark-headless.default.svc.cluster.local:7077 \
+ ./examples/jars/spark-examples_2.12–3.4.1.jar 1000
+
+
+./bin/spark-submit \
+ --class org.apache.spark.examples.SparkPi \
+ --master spark://kayvan-release-spark-master-0.kayvan-release-spark-headless.default.svc.cluster.local:7077 \
+ ./examples/src/main/python/pi.py 1000
+
+
+./bin/spark-submit \
+ --class org.apache.spark.examples.SparkPi \
+ --master spark://kayvan-release-spark-master-0.kayvan-release-spark-headless.default.svc.cluster.local:7077 \
+ ./examples/src/main/python/wordcount.py //filepath
