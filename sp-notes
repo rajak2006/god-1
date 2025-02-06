@@ -1,0 +1,108 @@
+god@jumbox:~/spark/spark-kubernetes$ cat spark-job-batch.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-on-eks
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+        - name: spark-test
+          image: rajak2006/sparkdemo:v01
+          command: [
+            "/bin/sh",
+            "-c",
+            "/opt/spark/bin/spark-submit \
+            --master k8s://https://192.168.29.248:6443 \
+            --deploy-mode cluster \
+            --name spark-job \
+            --class org.apache.spark.examples.SparkPi \
+            --conf spark.executor.instances=1 \
+            --conf spark.executor.memory=1G \
+            --conf spark.kubernetes.executor.request.cores=0.1 \
+            --conf spark.sql.shuffle.partitions=60 \
+            --conf spark.kubernetes.container.image=rajak2006/spark:v6.0 \
+            --conf spark.kubernetes.container.image.pullPolicy=Never \
+            --conf spark.kubernetes.authenticate.driver.serviceAccountName=spark \
+            --conf spark.driver.host=$(hostname -i) \
+            --conf spark.driver.pod.name=$(hostname) \
+            --conf spark.jars.ivy=/tmp/sparkout \
+            local:///opt/spark/examples/jars/spark-examples_2.12-3.4.4.jar"
+          ]
+      serviceAccountName: spark
+      restartPolicy: Never
+  backoffLimit: 2
+=================================================
+
+god@jumbox:~/spark/spark-kubernetes/kubernetes$ cat spark-master-service.yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: spark-master
+spec:
+  ports:
+    - name: webui
+      port: 8080
+      targetPort: 8080
+    - name: spark
+      port: 7077
+      targetPort: 7077
+  selector:
+    component: spark-master
+god@jumbox:~/spark/spark-kubernetes/kubernetes$
+
+
+====================
+god@jumbox:~/spark/spark-kubernetes/kubernetes$ cat spark-master-deployment.yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: spark-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: spark-master
+  template:
+    metadata:
+      labels:
+        component: spark-master
+    spec:
+      containers:
+        - name: spark-master
+          image: rajak2006/sparkdemo:v01
+          command: ["/spark-master"]
+          ports:
+            - containerPort: 7077
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+god@jumbox:~/spark/spark-kubernetes/kubernetes$ cat spark-worker-deployment.yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: spark-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      component: spark-worker
+  template:
+    metadata:
+      labels:
+        component: spark-worker
+    spec:
+      containers:
+        - name: spark-worker
+          image: docker.io/rajak2006/sparkdemo:v01
+          command: ["/spark-worker"]
+          ports:
+            - containerPort: 8081
+          resources:
+            requests:
+              cpu: 100m
+god@jumbox:~/spark/spark-kubernetes/kubernetes$
