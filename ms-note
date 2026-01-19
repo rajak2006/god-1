@@ -1,0 +1,44 @@
+Here are clear, meeting-ready bullet points that explain the contents in a structured and easy-to-follow way:
+
+* **Namespace Setup**
+
+  * Create a dedicated Kubernetes/OpenShift namespace for each team.
+  * Add the namespace to the **ServiceMeshMemberRoll** to enable service mesh capabilities.
+
+* **Access Control (RBAC)**
+
+  * Assign **namespace-scoped RBAC** to each team.
+  * RBAC is limited to **MicroStrategy Environment custom resources (`MstrEnvironment`) only**.
+  * Teams do **not** get access to cluster-wide resources or operator-level permissions.
+
+* **MicroStrategy Environment Management**
+
+  * Teams create and manage MicroStrategy environments by applying **`MstrEnvironment` Custom Resources** within their own namespace.
+  * Teams have **CRUD access only to `mstrenvironments`**, which is sufficient for environment lifecycle management.
+
+* **Operator Responsibilities**
+
+  * The **MicroStrategy Operator’s ServiceAccount** handles all underlying Kubernetes resources automatically, including:
+
+    * Deployments
+    * StatefulSets
+    * PersistentVolumeClaims (PVCs)
+    * Routes
+    * Jobs
+    * Horizontal Pod Autoscalers (HPAs)
+  * Teams do not need direct access to these resources.
+
+* **Role Design per Team**
+
+  * Create **two namespace-scoped Roles per team**:
+
+    * **Admin Role**: Full CRUD access to `mstrenvironments`
+    * **Viewer Role**: Read-only access to `mstrenvironments`
+  * Bind each role to a **separate OpenShift group**.
+
+* **Security & Governance Benefits**
+
+  * Clear separation of responsibilities between teams and the operator.
+  * Full control over who can **create, modify, or view** MicroStrategy environments.
+  * No exposure of the MicroStrategy Operator or Admin UI to application teams.
+  * Follows least-privilege and namespace isolation best practices.
