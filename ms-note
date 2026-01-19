@@ -1,3 +1,20 @@
+As part of the OpenShift setup for MicroStrategy, the work can be divided into two key tasks that need to be completed:
+
+MicroStrategy Operator Installation
+
+The MicroStrategy Operator will be installed through Lightspeed.
+
+This approach does not require a web UI and allows us to deploy the operator consistently across multiple OpenShift clusters.
+
+MicroStrategy Environment Deployment
+
+Teams will create MicroStrategy environments by applying MstrEnvironment Custom Resources within their own namespace.
+
+Access is controlled via namespace-scoped RBAC, granting CRUD permissions only on mstrenvironments.
+
+This setup enables a self-service model for application teams while maintaining proper access control and isolation.
+=======================
+
 Here are clear, meeting-ready bullet points that explain the contents in a structured and easy-to-follow way:
 
 * **Namespace Setup**
