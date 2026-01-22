@@ -11,7 +11,11 @@ echo "=========================================="
 # ---------------------------
 echo ">> Cluster Versions"
 K8S_VERSION=$(oc version -o json | jq -r '.serverVersion.gitVersion')
-OCP_VERSION=$(oc get clusterversion version -o jsonpath='{.items[0].status.desired.version}' 2>/dev/null || oc version | grep 'Server Version' | awk '{print $3}')
+# Robust OpenShift version
+OCP_VERSION=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null || "")
+if [[ -z "$OCP_VERSION" ]]; then
+    OCP_VERSION=$(oc version -o json | jq -r '.openshiftVersion // "N/A"' 2>/dev/null)
+fi
 OC_VERSION=$(oc version --client | awk '{print $3}')
 
 echo "Kubernetes Version : $K8S_VERSION"
