@@ -19,13 +19,17 @@ echo "OpenShift Version  : $OCP_VERSION"
 echo "OC CLI Version     : $OC_VERSION"
 echo
 
-# ---------------------------
-# Service Mesh versions
-# ---------------------------
-echo ">> Service Mesh Versions Installed"
-oc get csv -A -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,VERSION:.spec.version \
-    | grep -i servicemesh || echo "Service Mesh Operator: NOT INSTALLED"
-echo
+# -----------------------------
+# Service Mesh Operator
+# -----------------------------
+SERVICE_MESH_VERSION=$(oc get csv -A -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.spec.version}{"\n"}{end}' \
+    | grep -i servicemesh | awk -F'|' '{print $2}' | sort -V | tail -n1)
+
+if [[ -z "$SERVICE_MESH_VERSION" ]]; then
+    echo "Service Mesh Operator: NOT INSTALLED"
+else
+    echo "Service Mesh Operator: INSTALLED $SERVICE_MESH_VERSION"
+fi
 
 # ---------------------------
 # Storage Classes
