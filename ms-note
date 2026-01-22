@@ -1,61 +1,226 @@
-As part of the OpenShift setup for MicroStrategy, the work can be divided into two key tasks that need to be completed:
+#!/usr/bin/env bash
 
-MicroStrategy Operator Installation
+set -e
 
-The MicroStrategy Operator will be installed through Lightspeed.
+echo "====================================="
+echo " OpenShift Cluster Information"
+echo "====================================="
 
-This approach does not require a web UI and allows us to deploy the operator consistently across multiple OpenShift clusters.
+# Ensure oc is available
+if ! command -v oc &>/dev/null; then
+    echo "ERROR: oc CLI not found"
+    exit 1
+fi
 
-MicroStrategy Environment Deployment
+echo
 
-Teams will create MicroStrategy environments by applying MstrEnvironment Custom Resources within their own namespace.
+# -------------------------------------
+# oc CLI Version
+# -------------------------------------
+echo ">> oc CLI Version"
+oc version --client | sed 's/^/  /'
+echo
 
-Access is controlled via namespace-scoped RBAC, granting CRUD permissions only on mstrenvironments.
+# -------------------------------------
+# Kubernetes Version
+# -------------------------------------
+echo ">> Kubernetes Version"
+oc get clusterversion version -o jsonpath='{.status.version}{"\n"}'
+echo
 
-This setup enables a self-service model for application teams while maintaining proper access control and isolation.
-=======================
+# -------------------------------------
+# OpenShift Version
+# -------------------------------------
+echo ">> OpenShift Version"
+oc get clusterversion version -o jsonpath='{.status.desired.version}{"\n"}'
+echo
 
-Here are clear, meeting-ready bullet points that explain the contents in a structured and easy-to-follow way:
+# -------------------------------------
+# Service Mesh (Istio) Available Versions
+# -------------------------------------
+echo ">> Service Mesh (Istio) Available Versions"
 
-* **Namespace Setup**
+if oc get csv -A | grep -qi servicemesh; then
+    oc get csv -A | awk '
+    BEGIN {
+        printf "%-30s %-30s %-10s\n", "NAMESPACE", "OPERATOR", "VERSION"
+    }
+    /servicemesh|istio/ {
+        printf "%-30s %-30s %-10s\n", $1, $2, $3
+    }'
+else
+    echo "Service Mesh Operator not installed"
+fi
 
-  * Create a dedicated Kubernetes/OpenShift namespace for each team.
-  * Add the namespace to the **ServiceMeshMemberRoll** to enable service mesh capabilities.
+echo
 
-* **Access Control (RBAC)**
+# -------------------------------------
+# Storage Classes
+# -------------------------------------
+echo ">> Storage Classes"
+oc get storageclass -o custom-columns=\
+NAME:.metadata.name,\
+PROVISIONER:.provisioner,\
+DEFAULT:.metadata.annotations.storageclass\\.kubernetes\\.io/is-default-class
+echo
 
-  * Assign **namespace-scoped RBAC** to each team.
-  * RBAC is limited to **MicroStrategy Environment custom resources (`MstrEnvironment`) only**.
-  * Teams do **not** get access to cluster-wide resources or operator-level permissions.
+# -------------------------------------
+# Ingress Controllers
+# -------------------------------------
+echo ">> Ingress Controllers"
+oc get ingresscontroller -n openshift-ingress-operator \
+-o custom-columns=\
+NAME:.metadata.name,\
+DOMAIN:.status.domain,\
+AVAILABLE:.status.conditions[?(@.type=="Available")].status
+echo
 
-* **MicroStrategy Environment Management**
+echo
+echo "====================================="
+echo " Script Completed Successfully"
+echo "====================================="
 
-  * Teams create and manage MicroStrategy environments by applying **`MstrEnvironment` Custom Resources** within their own namespace.
-  * Teams have **CRUD access only to `mstrenvironments`**, which is sufficient for environment lifecycle management.
 
-* **Operator Responsibilities**
 
-  * The **MicroStrategy Operator’s ServiceAccount** handles all underlying Kubernetes resources automatically, including:
 
-    * Deployments
-    * StatefulSets
-    * PersistentVolumeClaims (PVCs)
-    * Routes
-    * Jobs
-    * Horizontal Pod Autoscalers (HPAs)
-  * Teams do not need direct access to these resources.
 
-* **Role Design per Team**
 
-  * Create **two namespace-scoped Roles per team**:
+=================================
 
-    * **Admin Role**: Full CRUD access to `mstrenvironments`
-    * **Viewer Role**: Read-only access to `mstrenvironments`
-  * Bind each role to a **separate OpenShift group**.
+#!/usr/bin/env bash
 
-* **Security & Governance Benefits**
+set -e
 
-  * Clear separation of responsibilities between teams and the operator.
-  * Full control over who can **create, modify, or view** MicroStrategy environments.
-  * No exposure of the MicroStrategy Operator or Admin UI to application teams.
-  * Follows least-privilege and namespace isolation best practices.
+echo "====================================="
+echo " OpenShift Cluster Information"
+echo "====================================="
+
+# Ensure oc is available
+if ! command -v oc &>/dev/null; then
+    echo "ERROR: oc CLI not found"
+    exit 1
+fi
+
+echo
+
+# -------------------------------------
+# oc CLI Version
+# -------------------------------------
+echo ">> oc CLI Version"
+oc version --client | sed 's/^/  /'
+echo
+
+# -------------------------------------
+# Kubernetes Version
+# -------------------------------------
+echo ">> Kubernetes Version"
+oc get clusterversion version -o jsonpath='{.status.version}{"\n"}'
+echo
+
+# -------------------------------------
+# OpenShift Version
+# -------------------------------------
+echo ">> OpenShift Version"
+oc get clusterversion version -o jsonpath='{.status.desired.version}{"\n"}'
+echo
+
+# -------------------------------------
+# Service Mesh (Istio) Installed Versions
+# -------------------------------------
+echo ">> Service Mesh (Istio) Installed Versions"
+
+if oc get csv -A | grep -qi servicemesh; then
+    oc get csv -A | awk '
+    BEGIN {
+        printf "%-30s %-35s %-10s\n", "NAMESPACE", "OPERATOR", "VERSION"
+    }
+    /servicemesh|istio/ {
+        printf "%-30s %-35s %-10s\n", $1, $2, $3
+    }'
+else
+    echo "Service Mesh Operator: NOT INSTALLED"
+fi
+
+echo
+
+# -------------------------------------
+# Storage Classes
+# -------------------------------------
+echo ">> Storage Classes"
+oc get storageclass -o custom-columns=\
+NAME:.metadata.name,\
+PROVISIONER:.provisioner,\
+DEFAULT:.metadata.annotations.storageclass\\.kubernetes\\.io/is-default-class
+echo
+
+# -------------------------------------
+# Ingress Controllers
+# -------------------------------------
+echo ">> Ingress Controllers"
+oc get ingresscontroller -n openshift-ingress-operator \
+-o custom-columns=\
+NAME:.metadata.name,\
+DOMAIN:.status.domain,\
+AVAILABLE:.status.conditions[?(@.type=="Available")].status
+echo
+
+# =====================================================
+# ADDITIONAL RESOURCE CHECKS
+# =====================================================
+
+# -------------------------------------
+# cert-manager Operator
+# -------------------------------------
+echo ">> cert-manager Operator"
+
+CERT_MANAGER_CSV=$(oc get csv -A | awk '/cert-manager/ {print $1, $2, $3}')
+
+if [[ -n "$CERT_MANAGER_CSV" ]]; then
+    echo "INSTALLED:"
+    echo "NAMESPACE  OPERATOR  VERSION"
+    echo "$CERT_MANAGER_CSV"
+else
+    echo "cert-manager Operator: NOT INSTALLED"
+fi
+
+echo
+
+# -------------------------------------
+# PostgreSQL Version (best-effort detection)
+# -------------------------------------
+echo ">> PostgreSQL Version"
+
+# Try to detect running PostgreSQL pods by common patterns
+POSTGRES_IMAGE=$(oc get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"|"}{.spec.containers[*].image}{"\n"}{end}' \
+    | grep -Ei 'postgres|postgresql' | head -n 1)
+
+if [[ -n "$POSTGRES_IMAGE" ]]; then
+    echo "INSTALLED:"
+    echo "Detected image:"
+    echo "  $POSTGRES_IMAGE"
+    echo "NOTE: PostgreSQL version inferred from image tag"
+else
+    echo "PostgreSQL: NOT DETECTED"
+fi
+
+echo
+
+# -------------------------------------
+# MicroStrategy CMC Operator
+# -------------------------------------
+echo ">> MicroStrategy CMC Operator"
+
+MICROSTRATEGY_CSV=$(oc get csv -A | awk '/microstrategy|mstr|cmc/ {print $1, $2, $3}')
+
+if [[ -n "$MICROSTRATEGY_CSV" ]]; then
+    echo "INSTALLED:"
+    echo "NAMESPACE  OPERATOR  VERSION"
+    echo "$MICROSTRATEGY_CSV"
+else
+    echo "MicroStrategy CMC Operator: NOT INSTALLED"
+fi
+
+echo
+echo "====================================="
+echo " Script Completed Successfully"
+echo "====================================="
