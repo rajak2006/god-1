@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+echo "=========================================="
+echo " OpenShift Cluster Audit"
+echo "=========================================="
+
+# Helper to get image tag
+get_tag() { echo "$1" | awk -F':' '{print $NF}'; }
+
+# ---------------------------
+# Cluster Versions
+# ---------------------------
+echo ">> Cluster Versions"
+
+K8S_VERSION=$(oc version -o json | jq -r '.serverVersion.gitVersion' 2>/dev/null || echo "N/A")
+OCP_VERSION=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null || \
+              oc version -o json | jq -r '.openshiftVersion // "N/A"')
+OC_VERSION=$(oc version --client --short | awk '{print $3}' 2>/dev/null || echo "N/A")
+
+echo "Kubernetes Version : $K8S_VERSION"
+echo "OpenShift Version  : $OCP_VERSION"
+echo "OC CLI Version     : $OC_VERSION"
+echo
+
+# ---------------------------
+# Storage Classes
+# ---------------------------
+STORAGE_CLASSES=$(oc get sc -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}' | sed 's/ $//' | tr ' ' ', ')
+echo ">> Storage Classes"
+oc get sc -o custom-columns=NAME:.metadata.name,PROVISIONER:.provisioner
+echo
+
+# ---------------------------
+# Ingress Controllers
+# ---------------------------
+INGRESS_CONTROLLERS=$(oc get ingresscontroller -A -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}' | sed 's/ $//' | tr ' ' ', ')
+echo ">> Ingress Controllers"
+oc get ingresscontroller -A -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,DOMAIN:.spec.domain,ROUTING:.status.domain
+echo
+
+# ---------------------------
+# Operators / Resources Check
+# ---------------------------
+echo ">> Operators / Resources Check"
+printf "%-25s %-15s %-30s\n" "RESOURCE/OPERATOR" "INSTALLED" "VERSION/INFO"
+echo "---------------------------------------------------------------"
+
+declare -A RESOURCES=(
+    ["service-mesh-operator"]="service-mesh-operator"
+    ["cert-manager"]="cert-manager"
+    ["postgresql"]="postgresql"
+    ["microstrategy-cmc"]="microstrategy-cmc"
+)
+
+declare -A RESULTS
+
+for res in "${!RESOURCES[@]}"; do
+    INSTALLED="NO"
+    VERSION="N/A"
+
+    # Check OLM CSV
+    CSV_INFO=$(oc get csv -A -o json | jq -r --arg op "$res" '
+        .items[] | select(.metadata.name | test($op; "i"))
+        | "\(.metadata.namespace)|\(.metadata.name)|\(.spec.version // "N/A")|owner=\(.metadata.ownerReferences[0].name // "standalone")"
+    ' 2>/dev/null || "")
+
+    if [[ -n "$CSV_INFO" ]]; then
+        INSTALLED="YES"
+        VERSION=$(echo "$CSV_INFO" | awk -F'|' '{print $3 " (" $1 " / owner: " $4 ")"}' | paste -sd "," -)
+    else
+        # Fallback for non-OLM resources
+        case "$res" in
+            "service-mesh-operator")
+                IMAGE=$(oc get pods -A -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}' \
+                    | grep -i 'istio|servicemesh' | head -n1 || "")
+                if [[ -n "$IMAGE" ]]; then
+                    INSTALLED="YES"
+                    VERSION="NOT OLM ($(get_tag "$IMAGE"))"
+                fi
+                ;;
+            "cert-manager")
+                if oc get crd | grep -q cert-manager.io; then
+                    INSTALLED="YES"
+                    IMAGE=$(oc get pods -A -l app=cert-manager -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || "")
+                    VERSION=$([[ -n "$IMAGE" ]] && echo "NOT OLM ($(get_tag "$IMAGE"))" || echo "Installed (non-OLM)")
+                fi
+                ;;
+            "postgresql")
+                IMAGE=$(oc get pods -A -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}' \
+                    | grep -Ei 'postgres|postgresql' | head -n1 || "")
+                if [[ -n "$IMAGE" ]]; then
+                    INSTALLED="YES"
+                    VERSION="NOT OLM ($(get_tag "$IMAGE"))"
+                fi
+                ;;
+            "microstrategy-cmc")
+                IMAGE=$(oc get pods -A -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}' \
+                    | grep -i 'cmc' | head -n1 || "")
+                if [[ -n "$IMAGE" ]]; then
+                    INSTALLED="YES"
+                    VERSION="NOT OLM ($(get_tag "$IMAGE"))"
+                fi
+                ;;
+        esac
+    fi
+
+    RESULTS[$res]="$INSTALLED|$VERSION"
+    printf "%-25s %-15s %-30s\n" "$res" "$INSTALLED" "$VERSION"
+done
+
+echo "---------------------------------------------------------------"
+echo "Audit Complete."
+echo
+
+# ---------------------------
+# BOXED LIST OUTPUT
+# ---------------------------
+SM_RESULT=$(echo "${RESULTS[service-mesh-operator]}" | awk -F'|' '{print $2}')
+CERT_RESULT=$(echo "${RESULTS[cert-manager]}" | awk -F'|' '{print $2}')
+PG_RESULT=$(echo "${RESULTS[postgresql]}" | awk -F'|' '{print $2}')
+CMC_RESULT=$(echo "${RESULTS[microstrategy-cmc]}" | awk -F'|' '{print $2}')
+
+cat <<EOF
++--------------------------------------------------+
+| OpenShift Version        : $OCP_VERSION
+| Kubernetes Version       : $K8S_VERSION
+| OC CLI Version           : $OC_VERSION
++--------------------------------------------------+
+| Service Mesh Operator    : $SM_RESULT
+| cert-manager             : $CERT_RESULT
+| PostgreSQL               : $PG_RESULT
+| MicroStrategy CMC        : $CMC_RESULT
++--------------------------------------------------+
+| Storage Classes          : $STORAGE_CLASSES
+| Ingress Controllers      : $INGRESS_CONTROLLERS
++--------------------------------------------------+
+EOF
