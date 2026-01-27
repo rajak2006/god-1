@@ -1,3 +1,76 @@
+Option 1 (mstrcli way – interactive)
+
+When using mstrcli, it:
+
+Logs into MicroStrategy portal
+
+Downloads profile automatically
+
+Creates secret for you
+
+You are not using mstrcli, so you must do it manually.
+
+Option 2 (Helm / CI way – enterprise)
+
+You must:
+
+Create the customer profile secret
+
+Reference it in values-openshift.yaml
+
+This is the correct enterprise approach.
+
+Step 1 – Create customer profile secret
+
+MicroStrategy usually provides you a file like:
+
+customer-profile.json
+
+
+(From MicroStrategy support / CMC portal)
+
+Create secret:
+
+oc create secret generic mstr-customer-profile \
+  --from-file=customer-profile.json \
+  -n mstr-operator
+
+
+Verify:
+
+oc get secret mstr-customer-profile -n mstr-operator
+
+Step 2 – Reference it in values file
+
+In your values-openshift.yaml:
+
+mstrCustomer:
+  profile:
+    secretName: mstr-customer-profile
+    key: customer-profile.json
+
+
+This tells Helm:
+
+“The customer profile is stored in this secret.”
+
+Now run Helm again
+helm upgrade --install mstr-operator mstr-operator.tgz \
+  -n mstr-operator \
+  -f values-openshift.yaml \
+  --wait
+
+
+This time:
+
+Helm finds profile
+
+Chart renders successfully
+
+Operator installs
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 Perfect! Here’s a **complete OpenShift example** for mounting **Sonic NAS** into an **MSTR pod**, ready to apply. **No CSI driver required**, just NFS.
 
 ---
