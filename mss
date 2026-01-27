@@ -1,3 +1,140 @@
+Perfect! Here’s a **complete OpenShift example** for mounting **Sonic NAS** into an **MSTR pod**, ready to apply. **No CSI driver required**, just NFS.
+
+---
+
+# **1️⃣ PersistentVolume (PV) for Sonic NAS**
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: sonic-nas-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    path: /export/myshare      # NAS exported folder
+    server: nas.example.com     # NAS server hostname or IP
+```
+
+* `ReadWriteMany` allows multiple pods to read/write simultaneously.
+* `path` and `server` must match your Sonic NAS setup.
+
+Apply:
+
+```bash
+oc apply -f pv-sonic-nas.yaml
+```
+
+Check PV status:
+
+```bash
+oc get pv
+```
+
+---
+
+# **2️⃣ PersistentVolumeClaim (PVC)**
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonic-nas-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+Apply:
+
+```bash
+oc apply -f pvc-sonic-nas.yaml
+```
+
+Check PVC:
+
+```bash
+oc get pvc
+```
+
+It should show `STATUS: Bound`.
+
+---
+
+# **3️⃣ MSTR Deployment with NAS mounted**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mstr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mstr
+  template:
+    metadata:
+      labels:
+        app: mstr
+    spec:
+      containers:
+      - name: mstr
+        image: mstr-image:latest  # replace with your MSTR image
+        volumeMounts:
+        - name: nas-volume
+          mountPath: /mnt/sonic-nas   # folder inside pod where NAS is accessible
+      volumes:
+      - name: nas-volume
+        persistentVolumeClaim:
+          claimName: sonic-nas-pvc
+```
+
+* Inside the pod, files under `/mnt/sonic-nas` are stored **directly on NAS**.
+* MSTR can read/write as if it’s a local directory.
+
+---
+
+# **4️⃣ Verify inside the pod**
+
+```bash
+oc get pods -l app=mstr
+oc exec -it <pod-name> -- /bin/bash
+ls /mnt/sonic-nas
+echo "hello NAS" > /mnt/sonic-nas/test.txt
+```
+
+✅ Files written here go straight to the NAS.
+
+---
+
+# **5️⃣ Key Points**
+
+1. No CSI driver required for standard NFS NAS.
+2. Ensure OpenShift nodes can **reach the NAS server** (firewall, network).
+3. Make sure NAS export allows **ReadWrite access** for the OpenShift nodes.
+4. `ReadWriteMany` is required if multiple pods mount the same volume.
+
+---
+
+This setup lets **MSTR pods directly access Sonic NAS** for reading and writing files, **no S3 or CLI needed**.
+
+---
+
+If you want, I can also show a **variation where MSTR automatically picks up uploaded files from NAS** for processing — fully plug-and-play inside OpenShift.
+
+Do you want me to do that?
+
+
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 Perfect 👍
 Below is a **clear, enterprise-ready guide for NON-INTERACTIVE / CI-BASED MicroStrategy Operator installation on OpenShift**, aligned with how **platform engineering teams** automate installs (GitOps / pipelines).
 
