@@ -1,0 +1,136 @@
+Yes — **RoleBinding assigned to a group is valid**, but it’s important to understand **what scope it gives**.
+
+There are **two different cases**:
+
+---
+
+# 1️⃣ RoleBinding → Group (Namespace scope)
+
+This gives permissions **only inside one namespace**.
+
+### Example
+
+```bash
+oc adm policy add-role-to-group admin mstr-ocp-admins -n mstr-operator
+```
+
+This means:
+
+* Group: `mstr-ocp-admins`
+* Role: `admin`
+* Namespace: `mstr-operator`
+
+So users in that group can:
+
+* Create pods, services, secrets
+* **Only in `mstr-operator` namespace**
+
+They **cannot**:
+
+* Create CRDs
+* Install operators
+* Create namespaces
+* Do cluster-wide actions
+
+---
+
+# 2️⃣ ClusterRoleBinding → Group (Cluster scope) ✅ (what you need)
+
+This gives permissions **across the entire cluster**.
+
+### Example
+
+```bash
+oc adm policy add-cluster-role-to-group cluster-admin mstr-ocp-admins
+```
+
+This means:
+
+* Group: `mstr-ocp-admins`
+* Role: `cluster-admin`
+* Scope: whole cluster
+
+So users in that group can:
+
+* Create CRDs
+* Install operators
+* Create namespaces
+* Manage everything
+
+---
+
+# Visual comparison
+
+## ❌ RoleBinding (namespace only)
+
+```
+Role (admin)
+   ↓
+RoleBinding (mstr-operator)
+   ↓
+Group
+   ↓
+FID
+```
+
+## ✅ ClusterRoleBinding (global)
+
+```
+ClusterRole (cluster-admin)
+   ↓
+ClusterRoleBinding
+   ↓
+Group
+   ↓
+FID
+```
+
+---
+
+# How to check what your group has
+
+### Namespace roles:
+
+```bash
+oc get rolebindings -A | grep mstr-ocp-admins
+```
+
+### Cluster roles:
+
+```bash
+oc get clusterrolebindings | grep mstr-ocp-admins
+```
+
+---
+
+# How to test real power (best command)
+
+```bash
+oc auth can-i create crd --as-group=mstr-ocp-admins
+```
+
+| Result | Meaning                       |
+| ------ | ----------------------------- |
+| yes    | Group has cluster-level power |
+| no     | Only namespace-level          |
+
+---
+
+# For MicroStrategy Operator
+
+You **must have**:
+
+* ClusterRoleBinding
+* Not just RoleBinding
+
+Because operator needs:
+
+* CRDs
+* Cluster roles
+* Global resources
+
+---
+
+# One-line executive explanation
+
+> RoleBinding grants permissions only within a namespace, while ClusterRoleBinding grants permissions across the entire cluster. For installing platform components like MicroStrategy Operator, permissions must be assigned using ClusterRoleBinding to a group.
