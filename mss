@@ -1,3 +1,22 @@
+What the customer profile actually represents
+
+The customer-profile.json contains:
+
+Customer ID
+
+Subscription ID
+
+Entitlement
+
+Support contract
+
+Feature flags
+
+In simple words:
+
+This file proves to MicroStrategy:
+“You are a real customer, not an anonymous install.”
+=============================
 Option 1 (mstrcli way – interactive)
 
 When using mstrcli, it:
