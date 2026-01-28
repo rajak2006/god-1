@@ -1,3 +1,293 @@
+LDAP-based Functional IDs can be reused across multiple OpenShift clusters, but each cluster must independently integrate with LDAP and explicitly bind the user’s groups to appropriate roles to grant access.
+An LDAP-based Functional ID can authenticate to any OpenShift cluster that trusts the same LDAP provider, but it has no permissions by default. Access is granted only after the user’s LDAP group is synchronized into the cluster and bound to appropriate roles using OpenShift RBAC.
+
+
+Step 7: RBAC binding (THIS grants power)
+
+Now the OpenShift admin runs (per cluster):
+
+oc adm policy add-cluster-role-to-group cluster-admin OCP_MSTR_ADMIN
+
+
+This creates a ClusterRoleBinding.
+
+Now the chain is complete:
+
+LDAP User (mstr_fid_user)
+   ↓
+LDAP Group (OCP_MSTR_ADMIN)
+   ↓
+OpenShift Group
+   ↓
+ClusterRoleBinding
+   ↓
+Permissions
+=========================================
+
+Permissions come from two things together:
+
+(What is allowed)  +  (Where it applies)
+   ClusterRole     +  ClusterRoleBinding
+
+Scope is controlled by:
+
+RoleBinding → namespace only
+
+ClusterRoleBinding → entire cluster
+
+Power is controlled by:
+
+ClusterRole rules (verbs + resources)
+
+
+Your scenario, explained cleanly
+You changed:
+
+❌ RoleBinding → ✅ ClusterRoleBinding
+
+The user has:
+
+❌ NOT cluster-admin
+
+✅ A custom ClusterRole (or non-admin ClusterRole)
+
+That ClusterRole includes:
+apiGroups:
+- apiextensions.k8s.io
+resources:
+- customresourcedefinitions
+verbs:
+- create
+- update
+- delete
+- get
+- list
+- watch
+
+Result:
+
+✅ User can create CRDs
+❌ User cannot do everything else (like nodes, etc.)
+
+This is 100% valid Kubernetes RBAC.
+
+Example (very realistic enterprise setup)
+Custom ClusterRole (NOT cluster-admin)
+kind: ClusterRole
+metadata:
+  name: mstr-platform-admin
+rules:
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["*"]
+- apiGroups: ["cloud.microstrategy.com"]
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["create", "get", "list"]
+
+
+Assigning a ClusterRole via a ClusterRoleBinding grants the user cluster-wide permissions defined in that ClusterRole. The user does not need to be a member of the cluster-admin role unless unrestricted access to all cluster resources is required.
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Great question — this is a **very common RBAC confusion**, so let’s clear it **once and for all**.
+
+---
+
+## Short, correct answer
+
+> **If a ClusterRole is bound using a RoleBinding, the user can use those permissions ONLY inside that namespace.**
+> **Cluster-wide access is NOT granted.**
+
+Even if the ClusterRole itself is very powerful.
+
+---
+
+## The key rule (memorize this)
+
+👉 **Scope is decided by the *binding*, not by the role.**
+
+| Binding type           | Scope              |
+| ---------------------- | ------------------ |
+| **RoleBinding**        | **Namespace only** |
+| **ClusterRoleBinding** | **Entire cluster** |
+
+---
+
+## Let’s break your scenario clearly
+
+### Your scenario:
+
+* User has a **RoleBinding**
+* RoleBinding points to a **ClusterRole**
+* That ClusterRole has **privileged permissions**
+
+### Question:
+
+> Can the user create resources cluster-wide or namespace-only?
+
+### ✅ Correct answer:
+
+**Namespace only.**
+
+---
+
+## Example (very common)
+
+### ClusterRole (very powerful)
+
+```yaml
+kind: ClusterRole
+metadata:
+  name: powerful-role
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+```
+
+### RoleBinding (namespace scoped)
+
+```yaml
+kind: RoleBinding
+metadata:
+  name: powerful-binding
+  namespace: mstr-operator
+subjects:
+- kind: User
+  name: mstr_fid_user
+roleRef:
+  kind: ClusterRole
+  name: powerful-role
+```
+
+### Result:
+
+* User can do **anything**
+* ❌ **ONLY inside `mstr-operator` namespace**
+* ❌ Cannot:
+
+  * create CRDs
+  * create namespaces
+  * install operators
+  * manage cluster-wide objects
+
+---
+
+## Why Kubernetes works this way
+
+Think of it like this:
+
+* **ClusterRole** = *What actions are allowed*
+* **RoleBinding / ClusterRoleBinding** = *Where those actions are allowed*
+
+So:
+
+```
+Powerful Role + Small Scope = Small Power
+```
+
+---
+
+## Visual comparison (very important)
+
+### ❌ ClusterRole + RoleBinding
+
+```
+ClusterRole (powerful)
+        ↓
+RoleBinding (namespace)
+        ↓
+User
+```
+
+👉 Power exists
+👉 But only **inside one namespace**
+
+---
+
+### ✅ ClusterRole + ClusterRoleBinding
+
+```
+ClusterRole (powerful)
+        ↓
+ClusterRoleBinding (cluster-wide)
+        ↓
+User
+```
+
+👉 Power exists
+👉 **Across the entire cluster**
+
+---
+
+## Proof command (you can test this yourself)
+
+If user only has RoleBinding:
+
+```bash
+oc auth can-i create crd --as=mstr_fid_user
+```
+
+Result:
+
+```
+no
+```
+
+But inside namespace:
+
+```bash
+oc auth can-i create deployment -n mstr-operator --as=mstr_fid_user
+```
+
+Result:
+
+```
+yes
+```
+
+This proves:
+
+* Namespace access ✅
+* Cluster access ❌
+
+---
+
+## What MicroStrategy Operator requires
+
+To install MSTR Operator, the user **must** be able to:
+
+* create CRDs
+* create clusterroles
+* create clusterrolebindings
+
+So it **must be**:
+
+```
+ClusterRole + ClusterRoleBinding
+```
+
+RoleBinding is **not sufficient**, no matter how powerful the role is.
+
+---
+
+## Final, precise answer (manager-friendly)
+
+> Assigning a ClusterRole through a RoleBinding limits the permissions to the specific namespace where the RoleBinding exists. Cluster-wide permissions are granted only when the ClusterRole is bound using a ClusterRoleBinding.
+
+---
+
+## Golden rule (remember forever)
+
+**RoleBinding limits scope.
+ClusterRoleBinding expands scope.**
+
+No exceptions.
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 Yes — **RoleBinding assigned to a group is valid**, but it’s important to understand **what scope it gives**.
 
 There are **two different cases**:
