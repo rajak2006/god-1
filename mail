@@ -1,0 +1,18 @@
+Subject: Update Required: OC Client to Static Binary on RHEL 8
+
+Hi Team,
+
+We encountered an issue during the Ansible playbook installation while running the oc command on a RHEL 8 system. The error observed was:
+
+oc: /lib64/libc.so.6: version `GLIBC_2.33' not found
+oc: /lib64/libc.so.6: version `GLIBC_2.34' not found
+
+
+Root Cause:
+The oc binary in use was built against a newer glibc version (2.32+), while RHEL 8 ships with glibc 2.28. This mismatch prevents the binary from running. This is expected behavior and not an OpenShift issue. Upgrading glibc on RHEL 8 is not supported or recommended.
+
+Resolution:
+We resolved the issue by installing the static oc client compatible with OpenShift 4.16. Please update the OC client binary in the playbook to the static client (download URL) so that the oc command works correctly on RHEL 8.
+
+Note:
+Although OpenShift 4.16 nodes run on RHCOS (based on RHEL 9), using RHEL 8 as a bastion/jump host to manage the cluster is fully supported when the static oc client is used.
