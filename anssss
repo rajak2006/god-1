@@ -1,0 +1,477 @@
+Raj, your playbook has **many syntax errors, wrong module names, bad variables, and broken YAML**.
+It will never run in current form.
+
+Below is a **clean, corrected, local-run Ansible playbook** that does what you intended:
+
+* Detect RHEL 7 or 8
+* Configure Podman repo
+* Install Podman
+* Download & install **oc**, **kubectl**, **helm**
+* Add Helm repos from Artifactory
+* Install rh-git29 and link binaries
+
+You can run this **locally** on the VM.
+
+---
+
+# 1) Folder Structure
+
+```bash
+jumbo-setup/
+├── playbook.yml
+└── vars/
+    └── variables.yml
+```
+
+---
+
+# 2) vars/variables.yml
+
+```yaml
+podman_repo_url_rhel7: "https://www.artifactreposy.net/artifactory/yum-enterprise/cate-systems-openshift/podm-"
+podman_repo_url_rhel8: "https://www.artifactreposy.net/artifactory/yum-enterprise/cate-systems-openshift/podm"
+
+oc_client_url: "https://downloads-openshift-console.apps.ilab-catgudc01d.ece.dyn.neroot.net/amd64/linux/oc.tar"
+
+kubectl_url: "https://www.artifactreposy.net/us/native/yum-enterprise/cate-hybrid-cloud/baselines/kubernetes/8-"
+kubectl_version: "kubectl-1.14.7.tar"
+
+helm_version: "helm-3.7.1-1.el6.x86_64.rpm"
+helm_rpm_url: "https://www.artifactreposy.net/artifactory/yum-enterprise/cat-app-store"
+
+helm_install_path: "/app/helm"
+
+artifactory_url: "https://artifactreposy.net/artifactory"
+artifactory_dev_repo: "helm-cto-dev"
+artifactory_local_repo: "helm-cto-teamdev-local"
+
+cat_ans_art_auth_username: "xyzzzzz"
+cat_ans_art_auth_apkikey: "xxxxxxxxxxxxxxxxxxxx"
+```
+
+---
+
+# 3) playbook.yml (FIXED)
+
+```yaml
+---
+- name: Setup Jumbo VM for OpenShift Tools
+  hosts: localhost
+  become: yes
+  vars_files:
+    - vars/variables.yml
+
+  tasks:
+
+  - name: Get RHEL major version
+    shell: rpm -E %{rhel}
+    register: rhel_version
+    changed_when: false
+
+  - name: Set Podman repo URL
+    set_fact:
+      podman_repo_url: "{{ podman_repo_url_rhel7 if rhel_version.stdout == '7' else podman_repo_url_rhel8 }}"
+
+  - name: Create Podman repo
+    blockinfile:
+      path: /etc/yum.repos.d/podman.repo
+      create: yes
+      block: |
+        [podman]
+        name=Podman Repo
+        baseurl={{ podman_repo_url }}
+        enabled=1
+        gpgcheck=0
+
+  - name: Install Podman
+    yum:
+      name: podman
+      state: present
+      disable_gpg_check: yes
+
+  - name: Create OC directory
+    file:
+      path: /opt/oc_client
+      state: directory
+
+  - name: Download oc
+    get_url:
+      url: "{{ oc_client_url }}"
+      dest: /opt/oc_client/oc.tar
+      url_username: "{{ cat_ans_art_auth_username }}"
+      url_password: "{{ cat_ans_art_auth_apkikey }}"
+
+  - name: Extract oc
+    unarchive:
+      src: /opt/oc_client/oc.tar
+      dest: /opt/oc_client
+      remote_src: yes
+
+  - name: Install oc
+    copy:
+      src: /opt/oc_client/oc
+      dest: /usr/bin/oc
+      mode: '0755'
+      remote_src: yes
+
+  - name: Verify oc
+    command: oc version
+    register: oc_version
+
+  - debug:
+      var: oc_version.stdout
+
+  # ---------------- kubectl ----------------
+
+  - name: Create kubectl repo
+    blockinfile:
+      path: /etc/yum.repos.d/kubectl.repo
+      create: yes
+      block: |
+        [kubectl]
+        name=Kubernetes Tools
+        baseurl={{ kubectl_url }}
+        enabled=1
+        gpgcheck=0
+
+  - name: Install kubectl
+    yum:
+      name: kubectl
+      state: present
+      disable_gpg_check: yes
+
+  - name: Verify kubectl
+    command: kubectl version --client
+    register: kubectl_version
+
+  - debug:
+      var: kubectl_version.stdout
+
+  # ---------------- HELM ----------------
+
+  - name: Download helm rpm
+    get_url:
+      url: "{{ helm_rpm_url }}/{{ helm_version }}"
+      dest: /opt/oc_client/{{ helm_version }}
+      url_username: "{{ cat_ans_art_auth_username }}"
+      url_password: "{{ cat_ans_art_auth_apkikey }}"
+
+  - name: Install helm
+    yum:
+      name: "/opt/oc_client/{{ helm_version }}"
+      state: present
+      disable_gpg_check: yes
+
+  - name: Create helm directory
+    file:
+      path: "{{ helm_install_path }}"
+      state: directory
+
+  - name: Add helm to PATH
+    lineinfile:
+      path: /etc/profile
+      line: 'export PATH={{ helm_install_path }}:$PATH'
+
+  - name: Add Helm Dev Repo
+    shell: |
+      helm repo add cto {{ artifactory_url }}/{{ artifactory_dev_repo }} \
+      --username {{ cat_ans_art_auth_username }} \
+      --password {{ cat_ans_art_auth_apkikey }} \
+      --pass-credentials
+
+  - name: Add Helm Local Repo
+    shell: |
+      helm repo add cto-local {{ artifactory_url }}/{{ artifactory_local_repo }} \
+      --username {{ cat_ans_art_auth_username }} \
+      --password {{ cat_ans_art_auth_apkikey }} \
+      --pass-credentials
+
+  - name: Helm repo update
+    shell: helm repo update
+
+  # ---------------- GIT ----------------
+
+  - name: Install rh-git29
+    yum:
+      name: rh-git29
+      state: present
+
+  - name: Link git binaries
+    file:
+      src: "/opt/rh/rh-git29/root/usr/bin/git"
+      dest: "/usr/bin/git"
+      state: link
+
+  - name: Verify git
+    command: git --version
+    register: git_version
+
+  - debug:
+      var: git_version.stdout
+```
+
+---
+
+# 4) Run Locally
+
+```bash
+cd jumbo-setup
+ansible-playbook -i localhost, -c local playbook.yml
+```
+
+---
+
+If you want, next I can:
+
+* Add **proxy support**
+* Add **air-gapped mode**
+* Add **logging**
+* Convert to **Ansible role structure**
+=============================================================
+
+
+Perfect 👍 Let’s **convert your working playbook into a proper Ansible Role structure** so you can reuse it across VMs, clusters, and automation pipelines (Jenkins, AWX, GitLab, etc.).
+
+Below is a **clean, production-style role layout** for your Jumbo VM / OSE tools setup.
+
+---
+
+# 1) Directory Structure (Role Layout)
+
+```bash
+jumbo-setup/
+├── inventory
+├── site.yml
+└── roles/
+    └── ose_tools/
+        ├── defaults/
+        │   └── main.yml
+        ├── vars/
+        │   └── main.yml
+        ├── tasks/
+        │   ├── main.yml
+        │   ├── podman.yml
+        │   ├── oc.yml
+        │   ├── kubectl.yml
+        │   ├── helm.yml
+        │   └── git.yml
+        ├── handlers/
+        │   └── main.yml
+        └── templates/
+```
+
+---
+
+# 2) inventory
+
+```ini
+[local]
+localhost ansible_connection=local
+```
+
+---
+
+# 3) site.yml (Entry Playbook)
+
+```yaml
+---
+- name: Setup Jumbo VM for OpenShift Tooling
+  hosts: local
+  become: yes
+  roles:
+    - ose_tools
+```
+
+---
+
+# 4) defaults/main.yml (safe overridable vars)
+
+```yaml
+helm_install_path: "/app/helm"
+```
+
+---
+
+# 5) vars/main.yml (your real values)
+
+```yaml
+podman_repo_url_rhel7: "https://www.artifactreposy.net/artifactory/yum-enterprise/cate-systems-openshift/podm-"
+podman_repo_url_rhel8: "https://www.artifactreposy.net/artifactory/yum-enterprise/cate-systems-openshift/podm"
+
+oc_client_url: "https://downloads-openshift-console.apps.ilab-catgudc01d.ece.dyn.neroot.net/amd64/linux/oc.tar"
+
+kubectl_url: "https://www.artifactreposy.net/us/native/yum-enterprise/cate-hybrid-cloud/baselines/kubernetes/8-"
+kubectl_version: "kubectl-1.14.7.tar"
+
+helm_version: "helm-3.7.1-1.el6.x86_64.rpm"
+helm_rpm_url: "https://www.artifactreposy.net/artifactory/yum-enterprise/cat-app-store"
+
+artifactory_url: "https://artifactreposy.net/artifactory"
+artifactory_dev_repo: "helm-cto-dev"
+artifactory_local_repo: "helm-cto-teamdev-local"
+
+cat_ans_art_auth_username: "xyzzzzz"
+cat_ans_art_auth_apkikey: "xxxxxxxxxxxxxxxxxxxx"
+```
+
+---
+
+# 6) roles/ose_tools/tasks/main.yml
+
+```yaml
+---
+- import_tasks: podman.yml
+- import_tasks: oc.yml
+- import_tasks: kubectl.yml
+- import_tasks: helm.yml
+- import_tasks: git.yml
+```
+
+---
+
+# 7) roles/ose_tools/tasks/podman.yml
+
+```yaml
+- name: Detect RHEL version
+  shell: rpm -E %{rhel}
+  register: rhel_version
+  changed_when: false
+
+- name: Set Podman repo URL
+  set_fact:
+    podman_repo_url: "{{ podman_repo_url_rhel7 if rhel_version.stdout == '7' else podman_repo_url_rhel8 }}"
+
+- name: Create Podman repo
+  blockinfile:
+    path: /etc/yum.repos.d/podman.repo
+    create: yes
+    block: |
+      [podman]
+      name=Podman Repo
+      baseurl={{ podman_repo_url }}
+      enabled=1
+      gpgcheck=0
+
+- name: Install Podman
+  yum:
+    name: podman
+    state: present
+    disable_gpg_check: yes
+```
+
+---
+
+# 8) roles/ose_tools/tasks/oc.yml
+
+```yaml
+- name: Create oc directory
+  file:
+    path: /opt/oc_client
+    state: directory
+
+- name: Download oc
+  get_url:
+    url: "{{ oc_client_url }}"
+    dest: /opt/oc_client/oc.tar
+    url_username: "{{ cat_ans_art_auth_username }}"
+    url_password: "{{ cat_ans_art_auth_apkikey }}"
+
+- name: Extract oc
+  unarchive:
+    src: /opt/oc_client/oc.tar
+    dest: /opt/oc_client
+    remote_src: yes
+
+- name: Install oc
+  copy:
+    src: /opt/oc_client/oc
+    dest: /usr/bin/oc
+    mode: '0755'
+    remote_src: yes
+```
+
+---
+
+# 9) roles/ose_tools/tasks/kubectl.yml
+
+```yaml
+- name: Create kubectl repo
+  blockinfile:
+    path: /etc/yum.repos.d/kubectl.repo
+    create: yes
+    block: |
+      [kubectl]
+      name=Kubernetes Tools
+      baseurl={{ kubectl_url }}
+      enabled=1
+      gpgcheck=0
+
+- name: Install kubectl
+  yum:
+    name: kubectl
+    state: present
+    disable_gpg_check: yes
+```
+
+---
+
+# 10) roles/ose_tools/tasks/helm.yml
+
+```yaml
+- name: Download helm rpm
+  get_url:
+    url: "{{ helm_rpm_url }}/{{ helm_version }}"
+    dest: /opt/oc_client/{{ helm_version }}
+    url_username: "{{ cat_ans_art_auth_username }}"
+    url_password: "{{ cat_ans_art_auth_apkikey }}"
+
+- name: Install helm
+  yum:
+    name: "/opt/oc_client/{{ helm_version }}"
+    state: present
+    disable_gpg_check: yes
+
+- name: Add helm repos
+  shell: |
+    helm repo add cto {{ artifactory_url }}/{{ artifactory_dev_repo }} \
+      --username {{ cat_ans_art_auth_username }} \
+      --password {{ cat_ans_art_auth_apkikey }} --pass-credentials
+    helm repo add cto-local {{ artifactory_url }}/{{ artifactory_local_repo }} \
+      --username {{ cat_ans_art_auth_username }} \
+      --password {{ cat_ans_art_auth_apkikey }} --pass-credentials
+    helm repo update
+```
+
+---
+
+# 11) roles/ose_tools/tasks/git.yml
+
+```yaml
+- name: Install rh-git29
+  yum:
+    name: rh-git29
+    state: present
+
+- name: Link git
+  file:
+    src: /opt/rh/rh-git29/root/usr/bin/git
+    dest: /usr/bin/git
+    state: link
+```
+
+---
+
+# 12) Run
+
+```bash
+ansible-playbook -i inventory site.yml
+```
+
+---
+
+If you want next, I can:
+
+* Add **offline repo mode**
+* Add **proxy config**
+* Add **rollback / validation**
+* Or make this **AWX compatible**
