@@ -1,0 +1,33 @@
+- name: Collect component status
+  shell: |
+    echo "=== {{ item.name | upper }} ==="
+
+    # Detect type
+    kind=$(oc get deploy,statefulset -n {{ namespace }} -l "{{ item.selector }}" -o custom-columns=KIND:.kind --no-headers | head -n1)
+
+    if [ "$kind" = "Deployment" ]; then
+      echo "Deployment:"
+      oc get deployment -n {{ namespace }} -l "{{ item.selector }}" --no-headers
+      echo "Latest ReplicaSet:"
+      latest_rs=$(oc get rs -n {{ namespace }} -l "{{ item.selector }}" --sort-by=.metadata.creationTimestamp -o name | tail -n 1)
+      oc get $latest_rs -n {{ namespace }}
+    elif [ "$kind" = "StatefulSet" ]; then
+      echo "StatefulSet:"
+      oc get statefulset -n {{ namespace }} -l "{{ item.selector }}" --no-headers
+      echo "Pods:"
+      oc get pods -n {{ namespace }} -l "{{ item.selector }}" --no-headers
+    else
+      echo "Unknown type for selector {{ item.selector }}"
+    fi
+  loop: "{{ mstr_components }}"
+  register: status_raw
+  changed_when: false
+
+- name: Build status report
+  set_fact:
+    status_report: "{{ status_report | default('') + item.stdout + '\n' }}"
+  loop: "{{ status_raw.results }}"
+
+- name: Show status on screen
+  debug:
+    msg: "{{ status_report }}"
