@@ -2,6 +2,47 @@
   shell: |
     echo "=== {{ item.name | upper }} ==="
 
+    # Check if it's a Deployment
+    if oc get deploy -n {{ namespace }} | grep -iq "{{ item.name }}"; then
+      echo "Deployment:"
+      oc get deployment -n {{ namespace }} | grep -i "{{ item.name }}"
+      echo "Latest ReplicaSet:"
+      latest_rs=$(oc get rs -n {{ namespace }} | grep -i "{{ item.name }}" | sort -k1 | tail -n1 | awk '{print $1}')
+      if [ -n "$latest_rs" ]; then
+        oc get rs $latest_rs -n {{ namespace }}
+      fi
+
+    # Check if it's a StatefulSet
+    elif oc get statefulset -n {{ namespace }} | grep -iq "{{ item.name }}"; then
+      echo "StatefulSet:"
+      oc get statefulset -n {{ namespace }} | grep -i "{{ item.name }}"
+      echo "Pods:"
+      oc get pods -n {{ namespace }} | grep -i "{{ item.name }}"
+
+    else
+      echo "No Deployment or StatefulSet found for {{ item.name }}"
+    fi
+  loop: "{{ mstr_components }}"
+  register: status_raw
+  changed_when: false
+
+- name: Build status report
+  set_fact:
+    status_report: "{{ status_report | default('') + item.stdout + '\n' }}"
+  loop: "{{ status_raw.results }}"
+
+- name: Show status on screen
+  debug:
+    msg: "{{ status_report }}"
+
+
+
+
+
+- name: Collect component status
+  shell: |
+    echo "=== {{ item.name | upper }} ==="
+
     # Detect type
     kind=$(oc get deploy,statefulset -n {{ namespace }} -l "{{ item.selector }}" -o custom-columns=KIND:.kind --no-headers | head -n1)
 
