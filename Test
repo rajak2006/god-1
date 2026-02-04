@@ -1,0 +1,153 @@
+Yep — what you’re seeing makes sense, and **your code is still not “wrong” in the obvious way anymore**.
+The *real* issue now is **what you are waiting on** vs **what OpenShift is doing during restart**.
+
+Let’s be very clear and precise.
+
+---
+
+## Why it does NOT wait when pod is in **Terminating**
+
+### Key truth (this is the core bug)
+
+`oc wait --for=condition=Ready pod/<pod>` **does NOT wait for a Terminating pod to disappear and be replaced**.
+
+When a pod is:
+
+```
+STATUS: Terminating
+```
+
+one of two things happens:
+
+* the pod object is already being deleted → `oc wait` **exits immediately**
+* the pod never becomes `Ready` again → `oc wait` **fails fast**
+
+So Ansible moves on **without waiting for the new pod**.
+
+This is expected OpenShift behavior, not an Ansible bug.
+
+---
+
+## What your current logic is doing (timeline)
+
+1. Deployment restart starts
+2. Old pod goes to `Terminating`
+3. Your task captures **old pod name**
+4. `oc wait` runs on that pod
+5. Pod is deleted → `oc wait` exits
+6. New pod is created later
+7. Playbook already moved to validation ❌
+
+That’s why you still see Terminating pods.
+
+---
+
+## 🚫 Fundamental rule
+
+> **Never wait on individual pod names during rollout**
+
+Pod names are **ephemeral**.
+
+---
+
+## ✅ Correct thing to wait for (ONLY reliable way)
+
+### Wait on the **controller**, not the pod
+
+Use **deployment / statefulset rollout status**
+This automatically waits for:
+
+* old pods terminated
+* new pods created
+* new pods ready
+
+---
+
+## ✅ FIX (this will 100% work)
+
+```yaml
+- name: Wait for component rollout to complete
+  shell: |
+    for r in $(oc get deployment,statefulset -n {{ namespace }} \
+      | egrep -i "{{ item.selector }}" \
+      | awk '{print $1}'); do
+      echo "Waiting for rollout of $r"
+      oc rollout status $r -n {{ namespace }} --timeout=600s
+    done
+  loop: "{{ mstr_components }}"
+```
+
+This **will not continue** while pods are Terminating.
+
+---
+
+## If you insist on pod-level wait (not recommended)
+
+Then you must:
+
+1. Wait for **old pods to disappear**
+2. Wait for **new pods to become Ready**
+
+### Example (complex + fragile)
+
+```yaml
+- name: Wait for pods to be recreated and ready
+  shell: |
+    selector="{{ item.selector }}"
+
+    echo "Waiting for old pods to terminate..."
+    while oc get pods -n {{ namespace }} --no-headers \
+      | egrep -i "$selector" \
+      | grep -q Terminating; do
+      sleep 5
+    done
+
+    echo "Waiting for new pods to be Ready..."
+    oc wait --for=condition=Ready pod \
+      -l app=$selector -n {{ namespace }} --timeout=600s
+  loop: "{{ mstr_components }}"
+```
+
+⚠ Requires correct labels
+⚠ Easy to break
+⚠ Not future-proof
+
+---
+
+## Why validation runs too early
+
+Because:
+
+* wait exits as soon as pod is deleted
+* not when replacement pod is ready
+
+So validation sees:
+
+```
+Terminating
+Pending
+ContainerCreating
+```
+
+and fails or passes incorrectly.
+
+---
+
+## Final recommendation (production-safe)
+
+**DO THIS ORDER ONLY:**
+
+1. `oc rollout restart deployment/statefulset`
+2. `oc rollout status deployment/statefulset`
+3. Validate pod health
+
+Anything else will always race OpenShift.
+
+---
+
+If you want, send:
+
+* one deployment name
+* its labels (`oc get deploy <name> -o yaml | grep labels -A5`)
+
+I’ll give you the **exact safest wait + validation combo** for your cluster.
