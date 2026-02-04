@@ -1,0 +1,111 @@
+Ah — now we’re getting to the **core problem**. Thanks for clarifying: even your **while loop** approach is failing to wait reliably. I can explain exactly why this happens and what to do.
+
+---
+
+## Why your while loop doesn’t work
+
+1. **Pods are ephemeral**
+
+   * When you restart a deployment or statefulset, pod names **change immediately**.
+   * Your loop is probably iterating over **old pod names**, which get deleted.
+   * `oc wait` on a deleted pod exits **immediately**, so the loop finishes early.
+
+2. **`oc wait` only waits for a resource that exists**
+
+   * If pod is Terminating or deleted, `oc wait pod/<old-pod>` fails instantly.
+   * Even a `while` loop checking `oc get pods | grep Terminating` can miss pods if the new pods are created **after your check**.
+
+3. **Race conditions**
+
+   * If you check pods every 5–10 seconds, it’s possible that:
+
+     * Old pod terminates
+     * New pod comes up
+     * But it isn’t ready yet
+     * Your loop exits before the new pod is Ready
+
+4. **Timeouts**
+
+   * OpenShift rollout can take longer than your script anticipates.
+   * If your loop doesn’t account for all pods **or their readiness**, it will fail.
+
+---
+
+## ✅ Reliable approach: wait on the controller, not pods
+
+This is **production-safe** and avoids all the races:
+
+```bash
+oc rollout status deployment/<name> -n <namespace> --timeout=600s
+```
+
+* **Waits for all pods** to become Ready
+* Handles **Terminating old pods** automatically
+* Will **block until rollout is fully complete**
+
+> This works for both Deployments and StatefulSets.
+
+---
+
+### Example Ansible task:
+
+```yaml
+- name: Wait for rollout to complete (safe)
+  shell: |
+    for r in $(oc get deployment,statefulset -n {{ namespace }} \
+      | egrep -i "{{ item.selector }}" \
+      | awk '{print $1}'); do
+      echo "Waiting for rollout of $r"
+      oc rollout status $r -n {{ namespace }} --timeout=600s
+    done
+  loop: "{{ mstr_components }}"
+```
+
+* No while loops needed
+* No pod name tracking
+* No Terminating pod problems
+
+---
+
+## Optional: extra validation after rollout
+
+Once `oc rollout status` is done, you can safely check pod health:
+
+```yaml
+- name: Validate pods
+  shell: |
+    oc get pods -n {{ namespace }} --no-headers \
+    | egrep -i "{{ mstr_components | map(attribute='selector') | join('|') }}" \
+    | egrep -i "CrashLoopBackOff|Error|ImagePullBackOff|ErrImagePull" || true
+  register: badpods
+
+- name: Fail if unhealthy pods found
+  fail:
+    msg: |
+      ❌ Unhealthy pods detected.
+      Please check with support team.
+
+      Affected pods:
+      {{ badpods.stdout }}
+  when: badpods.stdout != ""
+```
+
+---
+
+### ✅ Key takeaways
+
+| Old approach             | Problem                                      | Fixed approach                                |
+| ------------------------ | -------------------------------------------- | --------------------------------------------- |
+| While loop checking pods | Races with Terminating pods, ephemeral names | `oc rollout status` waits on the controller   |
+| `oc wait pod/<old-pod>`  | Fails if pod deleted                         | Let OpenShift handle pod creation/replacement |
+| Manual sleep/check loops | Timeout and false passes                     | Rollout status + final validation             |
+
+---
+
+If you want, I can write a **full, combined playbook** that safely does:
+
+**restart → wait → validate → fail if bad pods**
+
+All in one pass, without any fragile loops.
+
+Do you want me to do that?
