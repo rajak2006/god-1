@@ -1,0 +1,114 @@
+
+Ah! That makes sense — the reason `verbs` and `resources` formulas didn’t work is because **your YAML structure is multi-line**, and the formulas I suggested work only for **single-line cells**. In your data:
+
+* `resources` can span **multiple lines** (`- pods`, `- pods/status`)
+* `verbs` is usually in one line, but sometimes formatting or extra spaces can break simple `IF(LEFT(...))` formulas.
+
+For this kind of YAML, **formulas alone won’t reliably combine multi-line resources into one cell**. We need a slightly smarter approach.
+
+---
+
+## **Option 1: Using Excel + Helper Column**
+
+1. **Step 1: Paste your YAML in Column A** (each line in its own row).
+
+2. **Step 2: Mark sections**
+   In Column B, use a formula to identify the “type” of each line:
+
+```excel
+=IF(LEFT(A1,10)="apiGroups:", "apiGroups",
+IF(LEFT(A1,9)="resources", "resources",
+IF(LEFT(A1,6)="verbs:", "verbs","")))
+```
+
+This will fill Column B with **apiGroups / resources / verbs / blank**.
+
+---
+
+3. **Step 3: Fill resource values**
+
+* Create Column C (`resource_group`) and fill it like this:
+
+```excel
+=IF(B1="resources", "", IF(B1="", C1, A1))
+```
+
+* This **carries down the resource lines** until the next section.
+
+4. **Step 4: Combine resource lines**
+
+* Use `TEXTJOIN` to combine all consecutive resource rows under the same section:
+
+```excel
+=TEXTJOIN(", ", TRUE, <range of resource lines>)
+```
+
+> This is easier if you copy each “rule block” into a separate range first.
+
+---
+
+## **Option 2: Cleanest Method — Use Python / Script**
+
+Because your `resources` are **multi-line lists**, the easiest way to create a proper Excel table is with a **small Python script**. It will automatically:
+
+* Detect each `apiGroups`
+* Collect all `resources` under it
+* Collect `verbs`
+* Output a clean table (Excel-friendly CSV)
+
+Example:
+
+```python
+import pandas as pd
+
+with open("rbac.yaml") as f:
+    lines = [line.strip() for line in f if line.strip()]
+
+data = []
+i = 0
+while i < len(lines):
+    if lines[i].startswith("apiGroups:"):
+        api = lines[i].split(":",1)[1].strip()
+        i += 1
+        # collect resources
+        resources = []
+        if lines[i].startswith("resources"):
+            i += 1
+            while i < len(lines) and lines[i].startswith("-"):
+                resources.append(lines[i][2:].strip())
+                i += 1
+        # collect verbs
+        verbs = []
+        if i < len(lines) and lines[i].startswith("verbs:"):
+            verbs = lines[i].split(":",1)[1].strip()
+            i += 1
+        data.append({"apiGroups": api, "resources": ", ".join(resources), "verbs": verbs})
+    else:
+        i += 1
+
+df = pd.DataFrame(data)
+df.to_excel("rbac_clean.xlsx", index=False)
+```
+
+✅ Result: **perfect table**:
+
+| apiGroups | resources                            | verbs                |
+| --------- | ------------------------------------ | -------------------- |
+| [""]      | pods, pods/status                    | ["get", "list", ...] |
+| [""]      | pods/exec, pods/log                  | ["get", "list", ...] |
+| [""]      | services, services/status            | ["get", "list", ...] |
+| [""]      | secrets, configmaps, serviceaccounts | ["get", "list", ...] |
+
+---
+
+💡 **Why Excel formulas alone fail:**
+
+* Excel can’t easily combine multiple rows into **one cell** dynamically without a helper column or VBA/Python.
+* `apiGroups` works because it’s **one line per rule**, but `resources` spans multiple lines.
+
+---
+
+If you want, I can **write a ready-to-use Excel formula solution using helper columns** that **will work fully in Excel** without Python — it will auto-assemble `resources` and `verbs` into proper columns.
+
+Do you want me to do that?
+
