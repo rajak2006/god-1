@@ -1,3 +1,34 @@
+Hi Team,
+
+During the deployment of the MicroStrategy 25.10 environment in namespace **`<namespace>`**, the environment creation is currently failing and remains in **PROVISIONING / INSTALLING** status.
+
+After analysis of operator events, scheduler logs, and pending pods, the following technical issues were identified:
+
+**1. Cluster Resource Constraints (Primary Cause)**
+Scheduler events indicate:
+
+* Insufficient CPU resources on available worker nodes
+* Remaining nodes contain taints that prevent workload scheduling
+
+As a result, MicroStrategy component pods remain in **Pending** state and the Helm installation initiated by the MicroStrategy Operator cannot complete successfully.
+
+Without appropriate SCC assignment, pods fail with errors such as "Invalid value: 1000 must be in the ranges [1001970000,1001979999]" and "Forbidden: not usable by user or serviceaccount," preventing them from being scheduled.
+
+**Requested Actions**
+
+1. Please verify and ensure adequate worker node CPU capacity is available (or provide schedulable nodes without blocking taints) to support the MicroStrategy environment resource requirements.
+2. Confirm that the namespace service accounts are assigned an SCC allowing flexible UID execution (e.g., `anyuid` or approved custom SCC) so containers can start successfully.
+
+Once these prerequisites are met, we will re-trigger the environment reconciliation and complete the deployment.
+
+Please let us know once the above changes are applied, or if any additional details are required from our side.
+
+Thanks & Regards,\
+
+
+
+
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 What type of backup using in application namespace in ocp for entreprises level 
 
 In OpenShift Container Platform (OCP) at the enterprise level, backing up data in the application namespace (project) typically involves application-aware backup solutions that can handle Kubernetes resources and persistent storage. The type of backup depends on what you want to protect: application state/configuration vs persistent data. Here’s a detailed breakdown:
