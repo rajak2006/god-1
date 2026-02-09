@@ -1,0 +1,126 @@
+Perfect! Now I understand exactly what you want:
+
+* Your input is a **text file** like this:
+
+```
+pods. [get create delete patch]
+services. [get list watch]
+secrets. [get list]
+```
+
+* You want a script that:
+
+  1. Reads this file.
+  2. Loops through **resources and verbs**.
+  3. Checks access for the **current user** in OpenShift using `oc auth can-i`.
+  4. Outputs the result in JSON or table format.
+
+We can do this cleanly in Python.
+
+---
+
+### **Python Script: `check_access_txt.py`**
+
+```python
+import subprocess
+import json
+
+# Input file
+INPUT_FILE = "resources.txt"
+NAMESPACE = "my-namespace"  # Change this or take as input
+
+report = {}
+
+with open(INPUT_FILE, "r") as f:
+    lines = f.readlines()
+
+for line in lines:
+    # Skip empty lines
+    line = line.strip()
+    if not line:
+        continue
+    
+    # Split resource and verbs
+    try:
+        resource_part, verbs_part = line.split('.', 1)
+        resource = resource_part.strip()
+        verbs = verbs_part.strip().strip('[]').split()
+    except ValueError:
+        print(f"Skipping invalid line: {line}")
+        continue
+
+    report[resource] = {}
+    
+    # Check access for each verb
+    for verb in verbs:
+        cmd = ["oc", "auth", "can-i", verb, resource, "--namespace", NAMESPACE]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        allowed = result.stdout.strip() == "yes"
+        report[resource][verb] = "ALLOWED" if allowed else "DENIED"
+
+# Output JSON
+json_output = json.dumps(report, indent=4)
+print(json_output)
+
+# Save to file
+with open("access_report.json", "w") as f:
+    f.write(json_output)
+
+print("\nAccess report saved to access_report.json")
+```
+
+---
+
+### **Input Example (`resources.txt`)**
+
+```
+pods. [get create delete patch]
+services. [get list watch]
+secrets. [get list]
+configmaps. [get list watch create delete patch update]
+```
+
+---
+
+### **Output Example (`access_report.json`)**
+
+```json
+{
+    "pods": {
+        "get": "ALLOWED",
+        "create": "DENIED",
+        "delete": "DENIED",
+        "patch": "DENIED"
+    },
+    "services": {
+        "get": "ALLOWED",
+        "list": "ALLOWED",
+        "watch": "ALLOWED"
+    },
+    "secrets": {
+        "get": "ALLOWED",
+        "list": "DENIED"
+    }
+}
+```
+
+---
+
+### **Usage**
+
+```bash
+python check_access_txt.py
+```
+
+* Change `NAMESPACE` at the top of the script, or modify it to accept a **command-line argument**.
+* The script works **without impersonation**, so it avoids forbidden errors.
+
+---
+
+I can also **enhance this script** to:
+
+1. Accept **namespace as input**.
+2. Accept **user as input with impersonation** (if you are a cluster-admin).
+3. Produce **pretty table + JSON + CSV output** automatically.
+
+Do you want me to do that full version?
