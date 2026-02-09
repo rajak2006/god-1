@@ -1,4 +1,67 @@
 
+
+import subprocess
+
+INPUT_FILE = "resources_input.txt"  # Your input file
+OUTPUT_FILE = "access_report.txt"
+NAMESPACE = "my-namespace"          # Change to your namespace
+
+resources = {}
+current_verbs = []
+
+with open(INPUT_FILE, "r") as f:
+    lines = f.readlines()
+
+for line in lines:
+    line = line.strip()
+    if not line:
+        continue
+
+    # Capture verbs
+    if line.startswith("verbs:"):
+        verbs_str = line.split(":", 1)[1].strip()
+        verbs_str = verbs_str.strip('[]').replace('"', '')
+        current_verbs = verbs_str.split(',')
+        current_verbs = [v.strip() for v in current_verbs]
+    
+    # Capture resources
+    elif line.startswith("resources:"):
+        resources_list = []
+        continue  # resources are in the following lines
+    
+    else:
+        # Lines under resources (ignore apiGroups)
+        if line.startswith("apiGroups"):
+            continue
+        resource_name = line.strip()
+        if resource_name:
+            resources[resource_name] = current_verbs
+
+# Prepare output table
+lines_out = []
+header = f"{'Resource':<25} {'Verb':<15} {'Access':<10}"
+lines_out.append(header)
+lines_out.append("-" * len(header))
+
+# Check access
+for resource, verbs in resources.items():
+    for verb in verbs:
+        cmd = ["oc", "auth", "can-i", verb, resource, "--namespace", NAMESPACE]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        allowed = result.stdout.strip() == "yes"
+        status = "ALLOWED" if allowed else "DENIED"
+        lines_out.append(f"{resource:<25} {verb:<15} {status:<10}")
+
+# Write to TXT
+with open(OUTPUT_FILE, "w") as f:
+    f.write("\n".join(lines_out))
+
+print(f"Access report saved to {OUTPUT_FILE}")
+
+
+
+
+******
 import json
 
 # Input JSON and output TXT
