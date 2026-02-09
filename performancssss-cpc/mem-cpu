@@ -1,0 +1,658 @@
+Got it — **OCP 4.16** 👍
+Nothing radically different from earlier 4.x, but there *are* a few 4.16-specific things worth checking when you hit **Insufficient CPU**.
+
+I’ll keep this focused and practical.
+
+---
+
+## OCP 4.16-specific checks for “Insufficient CPU”
+
+### 1. Check **Node Allocatable vs Kubelet reservations**
+
+In 4.16, kubelet defaults and machine configs can reserve more CPU than people expect.
+
+```bash
+oc describe node <node> | grep -A5 Allocatable
+```
+
+Then compare with:
+
+```bash
+oc get node <node> -o jsonpath='{.status.capacity.cpu}'
+```
+
+If capacity = `8`
+But allocatable = `7500m` or less → that’s normal, but important for sizing requests.
+
+Also check if someone customized:
+
+* `systemReserved`
+* `kubeReserved`
+
+```bash
+oc get kubeletconfig -A
+```
+
+Misconfigured reservations can starve schedulable CPU.
+
+---
+
+### 2. Verify **CPU Manager policy** (static vs none)
+
+If CPU Manager is set to `static`, pods requesting *integer CPUs* get exclusive cores — and fragmentation becomes brutal.
+
+```bash
+oc describe node <node> | grep -i cpu
+```
+
+Or:
+
+```bash
+oc get kubeletconfig -o yaml | grep cpuManagerPolicy
+```
+
+Important behavior in 4.16:
+
+* `cpu: "2"` requires **2 contiguous free cores**
+* `cpu: "2000m"` does *not*
+
+💥 Very common cause of “Insufficient CPU” with plenty of free millicores.
+
+---
+
+### 3. Check **Topology Manager**
+
+Topology-aware scheduling is stricter in newer releases.
+
+```bash
+oc describe node <node> | grep -i topology
+```
+
+If enabled (`restricted` or `single-numa-node`):
+
+* Pod may fail scheduling even when CPU is “available”
+* NUMA alignment fails → scheduler reports CPU insufficient
+
+This often appears after:
+
+* Performance profiles
+* Telco / NFV installs
+
+---
+
+### 4. Look for **PerformanceProfile**
+
+In 4.16, Performance Profiles are widely used and very easy to forget about.
+
+```bash
+oc get performanceprofile -A
+```
+
+If present:
+
+* CPUs may be **isolated**
+* Only a subset of CPUs are allocatable to “normal” pods
+
+Example problem:
+
+* Node has 32 CPUs
+* Profile isolates 24
+* Scheduler only sees 8 usable CPUs
+
+---
+
+### 5. Check **namespace-level CPU fragmentation**
+
+4.16 scheduling is stricter about honoring *Guaranteed* QoS.
+
+```bash
+oc get pod <pod> -o yaml | grep -i qos
+```
+
+If your pod is **Guaranteed**:
+
+* Requests == limits
+* Needs hard CPU availability
+
+If **Burstable**:
+
+* Easier to place
+
+Guaranteed pods fail first under CPU pressure.
+
+---
+
+### 6. Confirm **scheduler profile**
+
+If you’re using a custom scheduler (more common in 4.16 clusters):
+
+```bash
+oc get schedulers.config.openshift.io cluster -o yaml
+```
+
+Look for:
+
+* Custom profiles
+* Disabled scoring plugins
+* Custom filtering behavior
+
+---
+
+### 7. Events still tell the truth
+
+Even in 4.16, this is the fastest signal:
+
+```bash
+oc describe pod <pod>
+```
+
+You might see:
+
+```
+0/5 nodes are available:
+  3 Insufficient cpu
+  2 node(s) didn't match Pod's node affinity
+```
+
+That second line is usually the *real* issue.
+
+---
+
+## Fast triage checklist (4.16)
+
+If you want a 60-second diagnosis:
+
+```bash
+oc describe pod <pod>
+oc describe node <node>
+oc adm top nodes
+oc get performanceprofile -A
+oc get kubeletconfig -A
+```
+
+---
+
+## Most common real causes I see in 4.16
+
+1. CPU Manager `static` + integer CPU requests
+2. PerformanceProfile isolating most cores
+3. Over-sized CPU requests from Helm charts
+4. Namespace CPU quota silently hit
+5. Node affinity restricting eligible workers
+
+---
+
+If you want to go deeper, tell me **one** of these and I’ll zero in fast:
+
+* Is this a **performance / telco** cluster?
+* Pod CPU request + limit
+* Worker CPU count
+* Bare metal or cloud?
+
+We’ll squash it 😄
+@@@@@@@@@@@@@@@@@@@@@@@@@@
+Great question — this is exactly the right place to look for **cluster-wide CPU / memory isolation** in OCP 4.16.
+
+Below is a **clear, no-noise checklist** that shows *every* place MachineConfig (MC) or related objects can enforce CPU / memory isolation.
+
+---
+
+## 1. Check **PerformanceProfile** (most common)
+
+PerformanceProfile is the **primary** way CPU & memory isolation is applied cluster-wide.
+
+```bash
+oc get performanceprofile
+```
+
+If you see one, inspect it:
+
+```bash
+oc get performanceprofile <name> -o yaml
+```
+
+Key fields to look for:
+
+```yaml
+spec:
+  cpu:
+    isolated: "2-15"
+    reserved: "0-1"
+  hugepages:
+  numa:
+```
+
+🔴 If `isolated` CPUs are defined:
+
+* Those cores are **removed from general scheduling**
+* Only real-time / guaranteed pods can use them
+
+Also check:
+
+```yaml
+nodeSelector:
+  node-role.kubernetes.io/worker
+```
+
+That tells you whether it’s cluster-wide or role-specific.
+
+---
+
+## 2. Check generated **MachineConfig from PerformanceProfile**
+
+PerformanceProfile automatically generates MCs — these do the actual enforcement.
+
+```bash
+oc get mc | grep performance
+```
+
+Typical names:
+
+```
+99-worker-performance
+99-master-performance
+```
+
+Inspect one:
+
+```bash
+oc get mc 99-worker-performance -o yaml
+```
+
+Look for:
+
+* Kernel args
+* Tuned profile references
+* CPU isolation settings
+
+---
+
+## 3. Check **KubeletConfig** (systemReserved / kubeReserved)
+
+CPU & memory can be silently removed via kubelet reservations.
+
+```bash
+oc get kubeletconfig -A
+```
+
+Inspect each one:
+
+```bash
+oc get kubeletconfig <name> -o yaml
+```
+
+Look for:
+
+```yaml
+spec:
+  kubeletConfig:
+    systemReserved:
+      cpu: "1000m"
+      memory: "2Gi"
+    kubeReserved:
+      cpu: "1000m"
+      memory: "2Gi"
+    cpuManagerPolicy: static
+```
+
+⚠️ These apply via MachineConfig pools.
+
+---
+
+## 4. See which **MachineConfigPool** is affected
+
+Isolation may apply only to specific pools.
+
+```bash
+oc get mcp
+```
+
+Then:
+
+```bash
+oc describe mcp worker
+```
+
+Look for:
+
+* Referenced MCs
+* KubeletConfigs applied
+* Performance MCs included
+
+---
+
+## 5. Check **kernel boot arguments** in MCs
+
+Some clusters isolate CPUs via kernel args.
+
+```bash
+oc get mc -o yaml | grep -E "isolcpus|nohz_full|rcu_nocbs"
+```
+
+If you see:
+
+```
+isolcpus=2-15
+nohz_full=2-15
+rcu_nocbs=2-15
+```
+
+➡️ Those CPUs are *hard isolated* at the OS level.
+
+---
+
+## 6. Check **Tuned profiles**
+
+Tuned is used heavily with PerformanceProfile.
+
+```bash
+oc get tuned -n openshift-cluster-node-tuning-operator
+```
+
+Inspect:
+
+```bash
+oc get tuned <name> -n openshift-cluster-node-tuning-operator -o yaml
+```
+
+Look for:
+
+* `cpu-partitioning`
+* `isolated_cores`
+
+---
+
+## 7. Validate on a **live node**
+
+This confirms what’s *actually* enforced.
+
+```bash
+oc debug node/<node-name>
+chroot /host
+```
+
+CPU isolation:
+
+```bash
+cat /proc/cmdline
+```
+
+CPU sets:
+
+```bash
+cat /sys/fs/cgroup/cpuset/cpuset.cpus
+```
+
+Memory nodes:
+
+```bash
+numactl -H
+```
+
+---
+
+## 8. Quick “is isolation affecting scheduling?” test
+
+Check allocatable CPU:
+
+```bash
+oc describe node <node> | grep -A5 Allocatable
+```
+
+If:
+
+* Node has 32 CPUs
+* Allocatable shows 6 CPUs
+
+👉 Isolation is absolutely in play.
+
+---
+
+## TL;DR – cluster-wide isolation sources
+
+| Source                     | Affects CPU | Affects Memory |
+| -------------------------- | ----------- | -------------- |
+| PerformanceProfile         | ✅           | ✅              |
+| MachineConfig kernel args  | ✅           | ❌              |
+| KubeletConfig reservations | ✅           | ✅              |
+| Tuned profiles             | ✅           | ❌              |
+| HugePages                  | ❌           | ✅              |
+
+---
+
+## Most common real-world culprit
+
+> PerformanceProfile + cpuManagerPolicy=static
+> → looks like “plenty of CPUs” but scheduler only sees a few
+
+---
+
+If you want, paste:
+
+* `oc get performanceprofile -o yaml`
+* `oc get kubeletconfig -o yaml`
+* `oc describe node <node> | grep -A10 Allocatable`
+
+I’ll tell you **exactly** where your CPUs went 😄
+#############################
+Gotcha — let’s slow it down and explain **that `spec` bit line-by-line**, in plain terms, no jargon overload 😊
+This is from a **PerformanceProfile**.
+
+```yaml
+spec:
+  cpu:
+    isolated: "2-15"
+    reserved: "0-1"
+  hugepages:
+  numa:
+```
+
+---
+
+## Big picture first
+
+This config is **splitting the CPUs on each node into groups**, and each group has a *very specific purpose*.
+
+Think of a node with CPUs numbered like this:
+
+```
+CPU IDs: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+```
+
+---
+
+## `cpu.reserved: "0-1"`
+
+👉 **CPUs reserved for the system**
+
+What runs here:
+
+* OS processes
+* kubelet
+* CRI-O
+* OpenShift components
+* interrupts (mostly)
+
+Important facts:
+
+* **Pods will NOT be scheduled** on these CPUs
+* These CPUs keep the node healthy and responsive
+
+So:
+
+```
+CPU 0–1 → system only
+```
+
+---
+
+## `cpu.isolated: "2-15"`
+
+👉 **CPUs isolated for workloads**
+
+What this means:
+
+* These CPUs are **taken away from the normal Linux scheduler**
+* No random OS tasks or interrupts run here
+* Used by **Guaranteed QoS pods** (usually real-time or performance-critical apps)
+
+So:
+
+```
+CPU 2–15 → application workloads
+```
+
+This is *hard isolation* — very different from normal clusters.
+
+---
+
+## What about “normal” pods?
+
+Here’s the key surprise for many people:
+
+🚨 **Normal (Burstable / BestEffort) pods CANNOT use isolated CPUs**
+
+They can only run on:
+
+```
+Allocatable CPUs = reserved CPUs − kube/system usage
+```
+
+Which often ends up being **very small**.
+
+---
+
+## `cpuManagerPolicy: static` (implicitly used)
+
+When you see isolated CPUs, this is almost always paired with:
+
+```yaml
+cpuManagerPolicy: static
+```
+
+Effect:
+
+* Pods requesting **integer CPUs** (e.g. `cpu: "4"`)
+* Get **exclusive cores**
+* Bound permanently to specific CPUs
+
+Example:
+
+```yaml
+resources:
+  requests:
+    cpu: "4"
+  limits:
+    cpu: "4"
+```
+
+➡️ Pod gets 4 CPUs from `2–15`, nothing else can touch them.
+
+---
+
+## `hugepages:` (memory side)
+
+If present, this usually looks like:
+
+```yaml
+hugepages:
+  defaultHugepagesSize: "1G"
+  pages:
+  - size: "1G"
+    count: 8
+```
+
+Meaning:
+
+* 8 GB of RAM is carved out
+* Only pods that *explicitly request hugepages* can use it
+* Normal pods lose access to that memory
+
+---
+
+## `numa:` (CPU ↔ memory alignment)
+
+NUMA controls **where CPU and memory come from physically**.
+
+If you see:
+
+```yaml
+numa:
+  topologyPolicy: single-numa-node
+```
+
+That means:
+
+* Pod CPUs **and** memory must come from the *same NUMA node*
+* If they can’t → pod fails scheduling
+* Error often shows as **Insufficient CPU** (even when CPUs exist)
+
+This is a VERY common “but I have free CPU!” moment.
+
+---
+
+## Putting it all together (real example)
+
+Node has:
+
+* 16 CPUs total
+
+Config:
+
+```yaml
+reserved: "0-1"
+isolated: "2-15"
+```
+
+Result:
+
+* 2 CPUs → system only
+* 14 CPUs → isolated workloads
+* 0 CPUs → general scheduling pool 😬
+
+So:
+
+* A normal app requesting `500m` CPU ❌ fails
+* A guaranteed pod requesting `4` CPUs ✅ works
+* Scheduler error says: **Insufficient CPU**
+
+---
+
+## Why clusters use this
+
+This setup is intentional for:
+
+* Telco / NFV
+* Low-latency workloads
+* Real-time apps
+* Predictable performance
+
+But it’s **hostile to general-purpose workloads** unless planned carefully.
+
+---
+
+## Quick way to *see* this on a node
+
+```bash
+oc describe node <node> | grep -A5 Allocatable
+```
+
+If allocatable CPU is way lower than physical CPU → this profile is active.
+
+---
+
+## TL;DR
+
+* `reserved` → CPUs for OS & OpenShift
+* `isolated` → CPUs only for guaranteed, pinned pods
+* Normal pods lose access to most CPUs
+* NUMA + static CPU manager makes scheduling stricter
+* “Insufficient CPU” is often *by design*, not a bug
+
+If you want, tell me:
+
+* Total CPUs per node
+* Whether this is telco / perf cluster
+* Pod CPU request that’s failing
+
+I’ll tell you **exactly what will and won’t schedule** on this setup 👌
