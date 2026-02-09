@@ -1,3 +1,34 @@
+
+import json
+
+# Input JSON and output TXT
+json_file = "access_report.json"
+txt_file = "access_report.txt"
+
+# Load JSON
+with open(json_file, "r") as f:
+    data = json.load(f)
+
+# Prepare lines
+lines = []
+header = f"{'Resource':<15} {'Verb':<10} {'Access':<10}"
+lines.append(header)
+lines.append("-" * len(header))
+
+for resource, verbs in data.items():
+    for verb, status in verbs.items():
+        lines.append(f"{resource:<15} {verb:<10} {status:<10}")
+
+# Write to TXT file
+with open(txt_file, "w") as f:
+    f.write("\n".join(lines))
+
+print(f"TXT file saved as {txt_file}")
+
+
+
+
+
 Hi Team,
 
 During the deployment of the MicroStrategy 25.10 environment in namespace **`<namespace>`**, the environment creation is currently failing and remains in **PROVISIONING / INSTALLING** status.
