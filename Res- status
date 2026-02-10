@@ -1,4 +1,59 @@
+#!/bin/bash
 
+# Usage: ./check_access.sh <clusterrole.json> <username> <namespace>
+JSON_FILE="$1"
+USER_NAME="$2"
+NAMESPACE="$3"
+OUTPUT_FILE="ocp_access_report.txt"
+
+# Validate inputs
+if [[ -z "$JSON_FILE" || -z "$USER_NAME" || -z "$NAMESPACE" ]]; then
+  echo "Usage: $0 <clusterrole.json> <username> <namespace>"
+  exit 1
+fi
+
+if ! command -v jq &>/dev/null; then
+  echo "jq is required but not installed"
+  exit 1
+fi
+
+if ! command -v oc &>/dev/null; then
+  echo "oc CLI is required but not installed"
+  exit 1
+fi
+
+# Header
+printf "%-25s %-15s %-10s\n" "RESOURCE" "VERB" "ACCESS" > "$OUTPUT_FILE"
+printf "%-25s %-15s %-10s\n" "--------" "----" "------" >> "$OUTPUT_FILE"
+
+# Read all rules into an array to avoid subshell issues
+mapfile -t rules < <(jq -c '.rules[]' "$JSON_FILE")
+
+for rule in "${rules[@]}"; do
+    # Read resources and verbs safely
+    mapfile -t resources < <(echo "$rule" | jq -r '.resources[]')
+    mapfile -t verbs     < <(echo "$rule" | jq -r '.verbs[]')
+
+    for resource in "${resources[@]}"; do
+        [[ "$resource" == "*" ]] && continue  # skip wildcard
+
+        for verb in "${verbs[@]}"; do
+            [[ "$verb" == "*" ]] && continue  # skip wildcard
+
+            # Check access using oc
+            ALLOWED=$(oc auth can-i "$verb" "$resource" -n "$NAMESPACE" --as="$USER_NAME" -o json 2>/dev/null | jq -r '.allowed')
+            RESULT="DENIED"
+            [[ "$ALLOWED" == "true" ]] && RESULT="ALLOWED"
+
+            printf "%-25s %-15s %-10s\n" "$resource" "$verb" "$RESULT" >> "$OUTPUT_FILE"
+        done
+    done
+done
+
+echo "✅ Access report generated: $OUTPUT_FILE"
+
+
+######
 #!/bin/bash
 
 # Usage: ./check_access.sh <clusterrole.json> <username> <namespace>
