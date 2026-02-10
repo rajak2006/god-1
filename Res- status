@@ -1,3 +1,10 @@
+# Check if namespace exists
+if ! oc get ns "$NAMESPACE" &>/dev/null; then
+    echo "Namespace '$NAMESPACE' does not exist. Exiting."
+    exit 1
+fi
+####
+
 #!/bin/bash
 
 # Usage: ./check_access.sh <clusterrole.json> <username> <namespace>
