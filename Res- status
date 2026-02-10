@@ -1,3 +1,81 @@
+#!/bin/bash
+
+# Usage: ./check_access.sh <clusterrole.json> <username> <namespace>
+JSON_FILE="$1"
+USER_NAME="$2"
+NAMESPACE="$3"
+OUTPUT_FILE="ocp_access_report.txt"
+
+# Validate inputs
+if [[ -z "$JSON_FILE" || -z "$USER_NAME" || -z "$NAMESPACE" ]]; then
+  echo "Usage: $0 <clusterrole.json> <username> <namespace>"
+  exit 1
+fi
+
+if ! command -v jq &>/dev/null; then
+  echo "jq is required but not installed"
+  exit 1
+fi
+
+if ! command -v oc &>/dev/null; then
+  echo "oc CLI is required but not installed"
+  exit 1
+fi
+
+# Header
+printf "%-25s %-15s %-10s\n" "RESOURCE" "VERB" "ACCESS" > "$OUTPUT_FILE"
+printf "%-25s %-15s %-10s\n" "--------" "----" "------" >> "$OUTPUT_FILE"
+
+# Loop through rules
+jq -c '.rules[]' "$JSON_FILE" | while read -r rule; do
+  # Get apiGroups (array)
+  apiGroups=$(echo "$rule" | jq -r '.apiGroups[]?')
+  [[ -z "$apiGroups" ]] && apiGroups=""
+
+  # Loop resources
+  for resource in $(echo "$rule" | jq -r '.resources[]'); do
+    # Skip wildcard resource
+    [[ "$resource" == "*" ]] && continue
+
+    # Loop verbs
+    for verb in $(echo "$rule" | jq -r '.verbs[]'); do
+      # Skip wildcard verb
+      [[ "$verb" == "*" ]] && continue
+
+      # Build full resource name with apiGroup
+      full_resources=()
+      if [[ -z "$apiGroups" ]]; then
+        full_resources+=("$resource")
+      else
+        for ag in $apiGroups; do
+          if [[ "$ag" == "" || "$ag" == "null" ]]; then
+            full_resources+=("$resource")
+          else
+            full_resources+=("$resource.$ag")
+          fi
+        done
+      fi
+
+      # Check each full resource
+      for res in "${full_resources[@]}"; do
+        ALLOWED=$(oc auth can-i "$verb" "$res" -n "$NAMESPACE" --as="$USER_NAME" -o json 2>/dev/null | jq -r '.allowed')
+        if [[ "$ALLOWED" == "true" ]]; then
+          RESULT="ALLOWED"
+        else
+          RESULT="DENIED"
+        fi
+        printf "%-25s %-15s %-10s\n" "$res" "$verb" "$RESULT" >> "$OUTPUT_FILE"
+      done
+
+    done
+  done
+done
+
+echo "✅ Access report generated: $OUTPUT_FILE"
+
+
+
+
 Yep — I know exactly why this is happening 👍
 This is a **very common Bash + oc + jq gotcha**.
 
