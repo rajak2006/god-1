@@ -1,0 +1,128 @@
+Yep — I know exactly why this is happening 👍
+This is a **very common Bash + oc + jq gotcha**.
+
+### Root cause (important)
+
+`oc auth can-i` **prints** `yes` / `no`, but:
+
+* sometimes it prints **nothing** (especially with subresources)
+* sometimes it prints to **stderr**
+* sometimes extra whitespace breaks your string comparison
+
+So your script is running, but `ACCESS` is empty → nothing shows as ALLOWED / DENIED.
+
+---
+
+## ✅ Correct + reliable fix
+
+Use `--output=json` and parse the result **explicitly**.
+
+`oc auth can-i` supports structured output like this:
+
+```bash
+oc auth can-i get pods --as=user --output=json
+```
+
+Which returns:
+
+```json
+{
+  "allowed": true
+}
+```
+
+---
+
+## 🔥 Fixed Script (this WILL show ALLOWED / DENIED)
+
+### `check_access_from_json.sh`
+
+```bash
+#!/bin/bash
+
+JSON_FILE="$1"
+USER_NAME="$2"
+OUTPUT_FILE="ocp_access_report.txt"
+
+if [[ -z "$JSON_FILE" || -z "$USER_NAME" ]]; then
+  echo "Usage: $0 <clusterrole.json> <username>"
+  exit 1
+fi
+
+if ! command -v jq &>/dev/null; then
+  echo "jq is required but not installed"
+  exit 1
+fi
+
+# Header
+printf "%-20s %-20s %-10s\n" "RESOURCE" "VERB" "ACCESS" > "$OUTPUT_FILE"
+printf "%-20s %-20s %-10s\n" "--------" "----" "------" >> "$OUTPUT_FILE"
+
+jq -c '.rules[]' "$JSON_FILE" | while read -r rule; do
+  for resource in $(echo "$rule" | jq -r '.resources[]'); do
+    for verb in $(echo "$rule" | jq -r '.verbs[]'); do
+
+      ALLOWED=$(oc auth can-i "$verb" "$resource" \
+        --as="$USER_NAME" \
+        --output=json 2>/dev/null | jq -r '.allowed')
+
+      if [[ "$ALLOWED" == "true" ]]; then
+        RESULT="ALLOWED"
+      else
+        RESULT="DENIED"
+      fi
+
+      printf "%-20s %-20s %-10s\n" "$resource" "$verb" "$RESULT" >> "$OUTPUT_FILE"
+    done
+  done
+done
+
+echo "✅ Access report generated: $OUTPUT_FILE"
+```
+
+---
+
+## 🧪 Quick test (before running script)
+
+Run this manually to confirm your cluster supports JSON output:
+
+```bash
+oc auth can-i get pods --as=<user> --output=json
+```
+
+If you see:
+
+```json
+{"allowed":true}
+```
+
+You’re good.
+
+---
+
+## 🧠 Extra debugging tip (if something still looks off)
+
+Add this temporarily inside the loop:
+
+```bash
+echo "DEBUG: $verb $resource -> $ALLOWED"
+```
+
+This helps identify:
+
+* invalid subresources
+* verbs not supported for that resource
+* missing impersonation rights
+
+---
+
+## 🚀 Optional upgrades
+
+I can also:
+
+* detect **subresource verbs automatically**
+* add **namespace awareness**
+* generate **CSV / HTML reports**
+* compare **actual access vs ClusterRole rules**
+
+Just say the word 👌
