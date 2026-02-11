@@ -1,0 +1,51 @@
+apiVersion: cloud.microstrategy.com/v1
+kind: MstrEnvironment
+metadata:
+  name: <env-name>
+  namespace: <namespace>
+
+spec:
+  dnsEntry: <env-route>
+
+  environmentSize: 64
+  environmentType: sandbox
+
+  microstrategyVersion: "25.10"
+
+  imageRegistry: <registry-url>
+  imagePullSecrets:
+    - <registry-secret>
+
+  ingressController:
+    type: istio
+    cloudLBConfiguration:
+      service:
+        type: LoadBalancer
+        nodePorts:
+          http: ""
+
+  license: ""
+
+  multiWebappsConfigMapName: <multi-webapps-configmap>
+
+  networkPolicies:
+    dnsPort: 5353
+
+  persistentVolumeClaimSpecOverrides:
+    accessModes:
+      - ReadWriteMany
+    resources:
+      requests:
+        storage: 200Gi
+    storageClassName: <storage-class>
+
+  restoreFrom:
+    preset: image
+    presetSettings:
+      filePath: /blankmd.tar.gz
+      image: <metadata-image>
+
+  serviceConfigOverrides: []
+
+  volumePermissions:
+    enabled: true
