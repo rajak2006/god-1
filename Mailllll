@@ -1,4 +1,21 @@
+Hi Team,
 
+We are currently facing deployment issues while creating a MicroStrategy 25.10 environment in newly created namespaces (projects). During deployment, several pods remain in **Pending / Init failure** state, and the Helm installation triggered by the operator does not complete successfully.
+
+Upon analysis, the issue appears to be related to **Security Context Constraints (SCC)** and scheduling restrictions in the new namespaces. Please find the observed findings below:
+
+**Observed Findings:**
+
+* Pods report SCC validation errors indicating UID restrictions (containers attempting to run with UID 1000 while the namespace enforces a different UID range).
+* Some init containers (e.g., volume ownership change containers) fail due to insufficient permissions to perform `chown` operations on mounted volumes.
+
+Could you please confirm whether there have been any recent changes to SCC policies, permissions, or cluster-level configurations affecting our IDs or namespaces? We have been encountering these deployment issues over the past couple of days.
+
+Please let us know if any additional information is required from our side.
+
+Thanks & Regards,
+
+================================================
 
 import subprocess
 
