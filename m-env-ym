@@ -1,3 +1,30 @@
+microstrategyVersion: "25.10"
+
+imageRegistry: docker.artifactrepository.example.net/sandbox2510
+
+imagePullSecrets:
+  - docker-pull-secret-matx
+
+environmentType: sandbox
+environmentSize: 64
+
+persistentVolumeClaimSpecOverrides:
+  storageClassName: storagecephis
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 200Gi
+
+ingressController:
+  type: istio
+
+volumePermissions:
+  enabled: true
+
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 apiVersion: cloud.microstrategy.com/v1
 kind: MstrEnvironment
 metadata:
