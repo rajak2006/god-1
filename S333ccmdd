@@ -1,3 +1,54 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: s3cmd-test
+  namespace: mstr-s3
+spec:
+  restartPolicy: Never
+  containers:
+    - name: s3cmd
+      image: your-s3cmd-image:latest
+      command: ["sh", "-c"]
+      args:
+        - |
+          # Copy ConfigMap .s3cfg to writable location
+          cp /config/.s3cfg /tmp/.s3cfg
+          chmod 600 /tmp/.s3cfg
+
+          # Export AWS credentials from Secret
+          export AWS_ACCESS_KEY_ID=$(cat /secrets/access_key)
+          export AWS_SECRET_ACCESS_KEY=$(cat /secrets/secret_key)
+
+          # Test S3 connectivity
+          s3cmd --config=/tmp/.s3cfg ls s3://your-bucket || exit 1
+
+          # Optional: sync or get files
+          s3cmd --config=/tmp/.s3cfg sync s3://your-bucket/path/ /tmp/s3-data/
+      volumeMounts:
+        - name: s3cfg
+          mountPath: /config
+          readOnly: true
+        - name: aws-secret
+          mountPath: /secrets
+          readOnly: true
+  volumes:
+    - name: s3cfg
+      configMap:
+        name: s3cfg-cm
+        defaultMode: 0444
+    - name: aws-secret
+      secret:
+        secretName: aws-secret
+        defaultMode: 0444
+
+
+
+
+
+
+#######
+
+
 Pod scheduled
 
 initContainer
