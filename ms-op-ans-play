@@ -1,62 +1,91 @@
-Below is a **FULL END-TO-END ENTERPRISE LEVEL Ansible automation** for:
+FULL END-TO-END ENTERPRISE LEVEL Ansible automation for:
 
 ✅ OpenShift login (dynamic cluster/user/password)
 ✅ Intelligent dependency validation
-✅ **Enterprise Istio detection** (SMCP + mesh + istiod)
-✅ **Enterprise cert-manager validation** (CSV + Pods + CRD)
+✅ Enterprise Istio detection (SMCP + mesh + istiod)
+✅ Enterprise cert-manager validation (CSV + Pods + CRD)
 ✅ Conditional installation (safe re-run)
 ✅ MSTR Operator Helm install
 ✅ Runtime verification
 ✅ Clean audit summary
 
-⚠️ This version is designed for **restricted enterprise environments**:
+Good 👍 — this is exactly what an **enterprise playbook** must have.
 
-* ❌ No ansible-galaxy
-* ❌ No kubernetes.core
-* ✔ Only native Ansible + `oc` + `helm`
+In real environments we **never hardcode paths, namespaces, versions, chart names, timeouts, etc.**
+Everything must come from a **variables file** so you can change values without touching roles.
+
+Below is the **proper enterprise way**.
 
 ---
 
-# 🏗️ ENTERPRISE PROJECT STRUCTURE
+# 🏗️ Updated Enterprise Structure (with Variables)
 
-```text
+```text id="0ce9y9"
 mstr-enterprise/
 │
 ├── playbook.yml
 │
+├── vars/
+│   └── mstr_vars.yml       ⭐ ALL CONFIGURATION HERE
+│
 └── roles/
     ├── ocp_login/
-    │   └── tasks/main.yml
-    │
     ├── prereq_check/
-    │   └── tasks/main.yml
-    │
     ├── istio_validation/
-    │   └── tasks/main.yml
-    │
     ├── cert_manager_validation/
-    │   └── tasks/main.yml
-    │
     ├── cert_manager_install/
-    │   └── tasks/main.yml
-    │
     ├── mstr_operator_install/
-    │   └── tasks/main.yml
-    │
     └── final_report/
-        └── tasks/main.yml
 ```
 
 ---
 
-# 🚀 MAIN PLAYBOOK (ORCHESTRATOR)
+# ⭐ 1️⃣ GLOBAL VARIABLES FILE (MAIN PART)
+
+## `vars/mstr_vars.yml`
+
+This is the ONLY file you modify in future.
+
+```yaml id="w6bwn8"
+# =========================
+# GLOBAL SETTINGS
+# =========================
+
+# Namespaces
+cert_manager_namespace: "cert-manager"
+mstr_operator_namespace: "mstr-operator"
+
+# Helm charts
+cert_manager_chart: "/tmp/cert-manager-v1.18.2.tgz"
+cert_manager_values_file: "/tmp/values.yml"
+
+mstr_operator_chart: "/tmp/mstr-operator.tgz"
+mstr_operator_values_file: "value-openshift.yml"
+
+# Installation behavior
+helm_install_timeout: 600
+pod_wait_retries: 20
+pod_wait_delay: 15
+
+# Detection patterns
+mesh_csv_pattern: "mesh"
+istiod_pattern: "istiod"
+cert_crd_pattern: "cert-manager.io"
+```
+
+---
+
+# 🚀 2️⃣ MAIN PLAYBOOK (LOAD VARIABLES)
 
 ## `playbook.yml`
 
-```yaml
+```yaml id="3ycjg6"
 - name: Enterprise MSTR Operator Deployment
   hosts: localhost
   gather_facts: no
+
+  vars_files:
+    - vars/mstr_vars.yml
 
   vars_prompt:
     - name: ocp_cluster
@@ -83,55 +112,15 @@ mstr-enterprise/
 
 ---
 
-# 🔐 ROLE — OCP LOGIN
-
-## `roles/ocp_login/tasks/main.yml`
-
-```yaml
-- name: Login to OpenShift
-  command: >
-    oc login {{ ocp_cluster }}
-    -u {{ ocp_user }}
-    -p {{ ocp_pass }}
-    --insecure-skip-tls-verify=true
-  register: login_result
-  changed_when: "'Login successful' in login_result.stdout"
-
-- name: Show cluster info
-  command: oc whoami --show-server
-  register: cluster_info
-  changed_when: false
-
-- debug:
-    msg: "Connected to {{ cluster_info.stdout }}"
-```
-
----
-
-# 🧪 ROLE — PREREQUISITE CHECK
-
-## `roles/prereq_check/tasks/main.yml`
-
-```yaml
-- name: Check oc client
-  command: oc version --client
-  changed_when: false
-
-- name: Check helm
-  command: helm version
-  changed_when: false
-```
-
----
-
-# 🌐 ROLE — ENTERPRISE ISTIO VALIDATION
+# 🌐 3️⃣ Example — Istio Validation (Using Variables)
 
 ## `roles/istio_validation/tasks/main.yml`
 
-```yaml
-# Layer 1 — Service Mesh Operator
+```yaml id="525s3q"
 - name: Detect Service Mesh operator
-  shell: oc get csv -A --no-headers | grep mesh | head -1 || true
+  shell: >
+    oc get csv -A --no-headers |
+    grep {{ mesh_csv_pattern }} | head -1 || true
   register: mesh_csv
   changed_when: false
 
@@ -140,98 +129,39 @@ mstr-enterprise/
     mesh_namespace: "{{ mesh_csv.stdout.split()[0] if mesh_csv.stdout else 'NOT_INSTALLED' }}"
     mesh_version: "{{ mesh_csv.stdout.split()[1] if mesh_csv.stdout else 'N/A' }}"
 
-# Layer 2 — SMCP (source of truth)
 - name: Check SMCP
   shell: oc get smcp -A --no-headers || true
   register: smcp_result
   changed_when: false
 
-- name: Set SMCP status
-  set_fact:
-    smcp_installed: "{{ smcp_result.stdout != '' }}"
-
-# Layer 3 — Runtime validation
 - name: Check istiod pods
-  shell: oc get pods -A --no-headers | grep istiod || true
+  shell: >
+    oc get pods -A --no-headers |
+    grep {{ istiod_pattern }} || true
   register: istiod_pods
   changed_when: false
-
-- name: Set istio runtime
-  set_fact:
-    istio_running: "{{ istiod_pods.stdout != '' }}"
-
-- debug:
-    msg:
-      - "Mesh Namespace : {{ mesh_namespace }}"
-      - "Mesh Version   : {{ mesh_version }}"
-      - "SMCP Installed : {{ smcp_installed }}"
-      - "Istiod Running : {{ istio_running }}"
 ```
 
 ---
 
-# 🔐 ROLE — CERT MANAGER VALIDATION (ENTERPRISE)
-
-## `roles/cert_manager_validation/tasks/main.yml`
-
-```yaml
-# Layer 1 — Operator
-- name: Detect cert-manager operator
-  shell: oc get csv -A --no-headers | grep cert-manager | head -1 || true
-  register: cert_csv
-  changed_when: false
-
-- name: Parse cert-manager info
-  set_fact:
-    cert_installed: "{{ cert_csv.stdout != '' }}"
-
-# Layer 2 — Pods
-- name: Check cert-manager pods
-  shell: oc get pods -n cert-manager --no-headers || true
-  register: cert_pods
-  changed_when: false
-
-- name: Pod status
-  set_fact:
-    cert_pods_running: "{{ 'Running' in cert_pods.stdout }}"
-
-# Layer 3 — CRDs (critical check)
-- name: Check cert-manager CRDs
-  shell: oc get crd | grep cert-manager.io || true
-  register: cert_crd
-  changed_when: false
-
-- name: CRD status
-  set_fact:
-    cert_crd_installed: "{{ cert_crd.stdout != '' }}"
-
-- debug:
-    msg:
-      - "Cert Installed : {{ cert_installed }}"
-      - "Pods Running   : {{ cert_pods_running }}"
-      - "CRDs Present   : {{ cert_crd_installed }}"
-```
-
----
-
-# 🚀 ROLE — CERT MANAGER INSTALL (SMART)
+# 🔐 4️⃣ Cert Manager Install (Variable Driven)
 
 ## `roles/cert_manager_install/tasks/main.yml`
 
-```yaml
-- name: Install cert-manager only if unhealthy/missing
+```yaml id="tqehy0"
+- name: Install cert-manager if required
   block:
 
     - name: Create namespace
-      command: oc create ns cert-manager
+      command: oc create ns {{ cert_manager_namespace }}
       ignore_errors: yes
 
-    - name: Install cert-manager
+    - name: Install cert-manager helm
       shell: |
         helm upgrade --install cert-manager \
-        /tmp/cert-manager-v1.18.2.tgz \
-        --namespace cert-manager \
-        --values /tmp/values.yml
+        {{ cert_manager_chart }} \
+        --namespace {{ cert_manager_namespace }} \
+        --values {{ cert_manager_values_file }}
 
   when: >
     (not cert_installed) or
@@ -241,125 +171,113 @@ mstr-enterprise/
 
 ---
 
-# 🚀 ROLE — MSTR OPERATOR INSTALL
+# 🚀 5️⃣ MSTR Operator Install (Variable Driven)
 
 ## `roles/mstr_operator_install/tasks/main.yml`
 
-```yaml
-- name: Create mstr namespace
-  command: oc create ns mstr-operator
+```yaml id="a7xdm6"
+- name: Create MSTR namespace
+  command: oc create ns {{ mstr_operator_namespace }}
   ignore_errors: yes
 
-- name: Install / Upgrade MSTR operator
+- name: Install / Upgrade MSTR Operator
   shell: |
     helm upgrade --install mstr-operator \
-      /tmp/mstr-operator.tgz \
-      -n mstr-operator \
-      -f value-openshift.yml
+      {{ mstr_operator_chart }} \
+      -n {{ mstr_operator_namespace }} \
+      -f {{ mstr_operator_values_file }}
 
-# Enterprise wait logic
 - name: Wait for operator pods
-  shell: oc get pods -n mstr-operator --no-headers
+  shell: oc get pods -n {{ mstr_operator_namespace }} --no-headers
   register: pod_status
-  retries: 20
-  delay: 15
+  retries: "{{ pod_wait_retries }}"
+  delay: "{{ pod_wait_delay }}"
   until: "'Running' in pod_status.stdout"
   changed_when: false
 ```
 
 ---
 
-# 📊 ROLE — FINAL ENTERPRISE REPORT
+# 📊 6️⃣ Enterprise Result — Why This Is BEST PRACTICE
 
-## `roles/final_report/tasks/main.yml`
+Now changing environment means editing ONLY:
+
+```text id="hkvkbj"
+vars/mstr_vars.yml
+```
+
+Example:
+
+```yaml id="7d0r6w"
+mstr_operator_namespace: "mstr-prod"
+cert_manager_chart: "/backup/charts/cert-manager.tgz"
+pod_wait_retries: 40
+```
+
+No role changes needed 🔥
+
+---
+
+# ⭐ ENTERPRISE BENEFITS
+
+## ✔ Environment independent
+
+DEV / QA / PROD use same roles.
+
+---
+
+## ✔ Git-friendly
+
+Only vars change between environments.
+
+---
+
+## ✔ Safer upgrades
+
+No accidental edits inside roles.
+
+---
+
+## ✔ CI/CD ready
+
+Pipeline just switches variable file:
+
+```bash id="cfzzha"
+ansible-playbook playbook.yml \
+-e @vars/prod.yml
+```
+
+---
+
+# 🔥 REAL ARCHITECT LEVEL (VERY IMPORTANT TIP)
+
+Large enterprises use **3 variable layers**:
+
+```text id="j4uobh"
+vars/common.yml
+vars/dev.yml
+vars/prod.yml
+```
+
+Load like:
 
 ```yaml
-- name: Collect MSTR pods
-  shell: oc get pods -n mstr-operator --no-headers
-  register: mstr_pods
-  changed_when: false
-
-- debug:
-    msg: |
-      =======================================
-      ENTERPRISE INSTALLATION SUMMARY
-      =======================================
-      Service Mesh Namespace : {{ mesh_namespace }}
-      Service Mesh Version   : {{ mesh_version }}
-      SMCP Installed         : {{ smcp_installed }}
-      Istio Running          : {{ istio_running }}
-
-      Cert Manager Installed : {{ cert_installed }}
-      Pods Running           : {{ cert_pods_running }}
-      CRDs Installed         : {{ cert_crd_installed }}
-
-      MSTR Operator Pods:
-      {{ mstr_pods.stdout }}
-      =======================================
+vars_files:
+  - vars/common.yml
+  - vars/prod.yml
 ```
 
 ---
 
-# ▶️ RUN COMMAND
+# 🚀 Next Level (PLATFORM ENGINEER SECRET)
 
-```bash
-ansible-playbook playbook.yml
-```
+If you want, I will show you the **ULTRA CLEAN ENTERPRISE DESIGN**:
 
----
-
-# ⭐ WHY THIS IS REAL ENTERPRISE LEVEL
-
-## ✔ Multi-layer validation
-
-Same logic platform teams use:
-
-```
-Operator → Control Plane → Runtime
-```
-
----
-
-## ✔ Safe Re-Run
-
-No reinstall unless needed.
-
----
-
-## ✔ Production Stability
-
-Wait logic prevents partial installs.
-
----
-
-## ✔ Zero External Dependency
-
-Works fully offline.
-
----
-
-# 🔥 ARCHITECT TIP (VERY IMPORTANT)
-
-This design already protects against:
-
-* Operator installed but broken
-* Missing CRDs
-* Missing SMCP
-* Istio runtime failure
-* Partial helm installs
-
----
-
-# 🚨 Next Level (REAL PLATFORM ARCHITECT)
-
-If you want, I can give you the **Fortune-500 Platform Version** — almost nobody builds this correctly:
-
-🔥 Auto dependency graph (Istio → Cert → MSTR)
-🔥 Health scoring (0–100%)
-🔥 Smart failure stop (no bad deployments)
-🔥 Auto rollback on failure
-🔥 JSON audit report (CI/CD ready)
+✔ Role defaults + vars hierarchy
+✔ Auto environment switch
+✔ Zero hardcoded names anywhere
+✔ One playbook for all clusters globally
 
 Just say:
 
-> **“Show Fortune-500 platform version”** 😎
+> **“Show enterprise vars hierarchy design”** 😎
