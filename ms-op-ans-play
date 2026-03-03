@@ -830,7 +830,232 @@ pre_tasks:
 ```
 
 ---
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+very very very new new
 
+# ==========================================================
+# GET SMCP (SERVICE MESH CONTROL PLANE)
+# ==========================================================
+
+- name: Get SMCP
+  shell: oc get smcp -A --no-headers 2>/dev/null | head -1 || true
+  register: smcp_output
+  changed_when: false
+
+- name: Parse SMCP namespace
+  set_fact:
+    mesh_namespace: "{{ smcp_output.stdout.split()[0] if smcp_output.stdout else 'N/A' }}"
+
+- name: Determine SMCP installed
+  set_fact:
+    smcp_installed: "{{ mesh_namespace != 'N/A' }}"
+
+# ==========================================================
+# GET SERVICE MESH OPERATOR VERSION (FAST)
+# ==========================================================
+
+- name: Get Service Mesh operator CSV
+  shell: oc get csv -A --no-headers 2>/dev/null | grep servicemeshoperator | head -1 || true
+  register: mesh_csv
+  changed_when: false
+
+- name: Parse Service Mesh version
+  set_fact:
+    mesh_version: "{{ mesh_csv.stdout.split()[1] if mesh_csv.stdout else 'N/A' }}"
+
+# ==========================================================
+# CHECK ISTIOD RUNTIME
+# ==========================================================
+
+- name: Check istiod pods
+  shell: oc get pods -n {{ mesh_namespace }} --no-headers 2>/dev/null | grep istiod || true
+  register: istiod_pods
+  changed_when: false
+  when: smcp_installed
+
+- name: Determine istiod running
+  set_fact:
+    istio_running: "{{ 'Running' in istiod_pods.stdout }}"
+  when: smcp_installed
+
+# Default if SMCP not installed
+- set_fact:
+    istio_running: false
+  when: not smcp_installed
+
+# ==========================================================
+# GET SMMR INFO
+# ==========================================================
+
+- name: Get SMMR
+  shell: oc get smmr -n {{ mesh_namespace }} --no-headers 2>/dev/null || true
+  register: smmr_output
+  changed_when: false
+  when: smcp_installed
+
+- name: Count SMMR members
+  shell: oc get smmr -n {{ mesh_namespace }} -o jsonpath='{.items[*].spec.members[*]}' 2>/dev/null || true
+  register: smmr_members_raw
+  changed_when: false
+  when: smcp_installed
+
+- name: Set SMMR member count
+  set_fact:
+    smmr_member_count: >
+      {{ smmr_members_raw.stdout.split() | length
+         if smmr_members_raw.stdout != ''
+         else 0 }}
+  when: smcp_installed
+
+- name: Set SMMR namespace
+  set_fact:
+    smmr_namespace: "{{ mesh_namespace if smmr_member_count | int > 0 else 'N/A' }}"
+  when: smcp_installed
+
+# Defaults if SMCP not installed
+- set_fact:
+    smmr_member_count: 0
+    smmr_namespace: "N/A"
+  when: not smcp_installed
+
+# ==========================================================
+# CERT-MANAGER VERSION (HELM BASED)
+# ==========================================================
+
+- name: Get cert-manager Helm release
+  shell: helm list -n {{ cert_manager_namespace }} --output json 2>/dev/null || true
+  register: cert_helm
+  changed_when: false
+
+- name: Parse cert-manager version
+  set_fact:
+    cert_version: >
+      {{ (cert_helm.stdout | default('[]') | from_json)[0]['chart']
+         if (cert_helm.stdout | default('[]') | from_json | length) > 0
+         else 'N/A' }}
+
+# ==========================================================
+# MSTR OPERATOR VERSION (HELM BASED)
+# ==========================================================
+
+- name: Get MSTR Helm release
+  shell: helm list -n {{ mstr_operator_namespace }} --output json 2>/dev/null || true
+  register: mstr_helm
+  changed_when: false
+
+- name: Parse MSTR chart version
+  set_fact:
+    mstr_chart_version: >
+      {{ (mstr_helm.stdout | default('[]') | from_json)[0]['chart']
+         if (mstr_helm.stdout | default('[]') | from_json | length) > 0
+         else 'N/A' }}
+
+# ==========================================================
+# CALCULATE COMPONENT STATUS
+# ==========================================================
+
+- name: Calculate istio_result
+  set_fact:
+    istio_result: >
+      {% if not smcp_installed or not istio_running %}
+      FAIL
+      {% elif smmr_member_count | int == 0 %}
+      WARNING
+      {% else %}
+      PASS
+      {% endif %}
+
+- name: Calculate cert_result
+  set_fact:
+    cert_result: "{{ 'PASS' if cert_version != 'N/A' else 'FAIL' }}"
+
+- name: Calculate mstr_result
+  set_fact:
+    mstr_result: "{{ 'PASS' if mstr_chart_version != 'N/A' else 'FAIL' }}"
+
+- name: Calculate overall_result
+  set_fact:
+    overall_result: >
+      {% if istio_result == 'FAIL'
+         or cert_result == 'FAIL'
+         or mstr_result == 'FAIL' %}
+      FAILED
+      {% else %}
+      SUCCESS
+      {% endif %}
+
+# ==========================================================
+# EXECUTION TIME
+# ==========================================================
+
+- name: Capture end time
+  set_fact:
+    deploy_end_time: "{{ lookup('pipe','date +%s') | trim }}"
+
+- name: Calculate execution duration
+  set_fact:
+    deploy_duration: "{{ deploy_end_time | int - (deploy_start_time | default(deploy_end_time) | int) }}"
+
+# ==========================================================
+# BUILD FINAL REPORT
+# ==========================================================
+
+- name: Build final report text
+  set_fact:
+    final_report_text: |
+      ============================================================
+              MSTR PLATFORM DEPLOYMENT REPORT
+      ============================================================
+
+      OVERALL STATUS : {{ overall_result }}
+      EXECUTION TIME : {{ deploy_duration }} seconds
+
+      ------------------------------------------------------------
+      ISTIO SERVICE MESH
+      ------------------------------------------------------------
+        Namespace        : {{ mesh_namespace }}
+        Version          : {{ mesh_version }}
+        SMCP Present     : {{ 'YES' if smcp_installed else 'NO' }}
+        Istiod Running   : {{ 'YES' if istio_running else 'NO' }}
+        SMMR Namespace   : {{ smmr_namespace }}
+        Member Namespaces: {{ smmr_member_count }}
+        Status           : {{ istio_result }}
+
+      ------------------------------------------------------------
+      CERT-MANAGER
+      ------------------------------------------------------------
+        Namespace        : {{ cert_manager_namespace }}
+        Version          : {{ cert_version }}
+        Status           : {{ cert_result }}
+
+      ------------------------------------------------------------
+      MSTR OPERATOR
+      ------------------------------------------------------------
+        Namespace        : {{ mstr_operator_namespace }}
+        Chart Version    : {{ mstr_chart_version }}
+        Status           : {{ mstr_result }}
+
+      ------------------------------------------------------------
+      REPORT GENERATED : {{ lookup('pipe','date') }}
+      ============================================================
+
+# ==========================================================
+# DISPLAY REPORT
+# ==========================================================
+
+- name: Show Enterprise Report
+  debug:
+    msg: "{{ final_report_text }}"
+
+# ==========================================================
+# WRITE TO AUDIT LOG
+# ==========================================================
+
+- name: Append report to audit log
+  blockinfile:
+    path: "{{ audit_log_file }}"
+    marker: ""
+    block: "{{ final_report_text }}"
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 Very very new
 
@@ -1610,16 +1835,8 @@ based on `overall_result`.
 
 ---
 
-# 🚀 NEXT LEVEL (VERY POWERFUL)
 
-If you want, I can show the **Fortune-500 production pattern**:
 
-🔥 Email sent even if playbook crashes
-🔥 Failure reason auto-included
-🔥 Dependency-gate failure details attached
-🔥 HTML formatted mail (green/red status)
-
-Just say:
-
-> **“Show failure-safe email notification”** 😎
+=================================================
+new mail
 
