@@ -1839,4 +1839,215 @@ based on `overall_result`.
 
 =================================================
 new mail
+Perfect 👍
+Now we upgrade your report to **Enterprise HTML Email Ready Version**.
+
+This will:
+
+✔ Send clean formatted HTML email
+✔ Color-code PASS / WARNING / FAIL
+✔ Include full deployment summary
+✔ Attach log file
+✔ Look professional (production-ready)
+
+---
+
+# 🏆 What We Will Add
+
+We will:
+
+1. Convert your text report → HTML
+2. Add color badges
+3. Send email using Ansible `mail` module
+4. Attach audit log file
+
+---
+
+# ✅ Step 1 — Add HTML Report Block
+
+Add this **after** `Build final report text` task
+(before sending email)
+
+---
+
+## 🔹 Add HTML Report Builder
+
+```yaml
+# ==========================================================
+# BUILD HTML REPORT
+# ==========================================================
+
+- name: Build HTML report
+  set_fact:
+    final_report_html: |
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; }
+          .section { margin-top: 20px; }
+          .title { font-size: 20px; font-weight: bold; }
+          .success { color: green; font-weight: bold; }
+          .fail { color: red; font-weight: bold; }
+          .warning { color: orange; font-weight: bold; }
+          table { border-collapse: collapse; width: 80%; }
+          th, td { border: 1px solid #ddd; padding: 8px; }
+          th { background-color: #f2f2f2; }
+        </style>
+      </head>
+      <body>
+
+      <div class="title">MSTR PLATFORM DEPLOYMENT REPORT</div>
+
+      <p>
+        <strong>Overall Status:</strong>
+        <span class="{% if overall_result == 'SUCCESS' %}success{% else %}fail{% endif %}">
+          {{ overall_result }}
+        </span>
+      </p>
+
+      <p><strong>Execution Time:</strong> {{ deploy_duration }} seconds</p>
+
+      <div class="section">
+        <h3>Istio Service Mesh</h3>
+        <table>
+          <tr><th>Namespace</th><td>{{ mesh_namespace }}</td></tr>
+          <tr><th>Version</th><td>{{ mesh_version }}</td></tr>
+          <tr><th>SMCP Present</th><td>{{ 'YES' if smcp_installed else 'NO' }}</td></tr>
+          <tr><th>Istiod Running</th><td>{{ 'YES' if istio_running else 'NO' }}</td></tr>
+          <tr><th>SMMR Members</th><td>{{ smmr_member_count }}</td></tr>
+          <tr>
+            <th>Status</th>
+            <td class="{% if istio_result == 'PASS' %}success{% elif istio_result == 'WARNING' %}warning{% else %}fail{% endif %}">
+              {{ istio_result }}
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h3>Cert-Manager</h3>
+        <table>
+          <tr><th>Namespace</th><td>{{ cert_manager_namespace }}</td></tr>
+          <tr><th>Version</th><td>{{ cert_version }}</td></tr>
+          <tr>
+            <th>Status</th>
+            <td class="{% if cert_result == 'PASS' %}success{% else %}fail{% endif %}">
+              {{ cert_result }}
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="section">
+        <h3>MSTR Operator</h3>
+        <table>
+          <tr><th>Namespace</th><td>{{ mstr_operator_namespace }}</td></tr>
+          <tr><th>Chart Version</th><td>{{ mstr_chart_version }}</td></tr>
+          <tr>
+            <th>Status</th>
+            <td class="{% if mstr_result == 'PASS' %}success{% else %}fail{% endif %}">
+              {{ mstr_result }}
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="margin-top:30px;">
+        Report Generated: {{ lookup('pipe','date') }}
+      </p>
+
+      </body>
+      </html>
+```
+
+---
+
+# ✅ Step 2 — Send Email With Attachment
+
+Add this at end of role:
+
+```yaml
+# ==========================================================
+# SEND EMAIL (HTML + LOG ATTACHMENT)
+# ==========================================================
+
+- name: Send deployment report email
+  mail:
+    host: "{{ smtp_host }}"
+    port: "{{ smtp_port }}"
+    username: "{{ smtp_user }}"
+    password: "{{ smtp_pass }}"
+    to: "{{ email_to }}"
+    from: "{{ email_from }}"
+    subject: "MSTR Deployment Report - {{ overall_result }}"
+    subtype: html
+    body: "{{ final_report_html }}"
+    attach:
+      - "{{ audit_log_file }}"
+  delegate_to: localhost
+```
+
+---
+
+# ✅ Step 3 — Add Email Variables (vars file)
+
+In:
+
+```yaml
+vars/mstr_vars.yml
+```
+
+Add:
+
+```yaml
+smtp_host: "smtp.example.com"
+smtp_port: 587
+smtp_user: "automation@example.com"
+smtp_pass: "your_password"
+
+email_to: "platform-team@example.com"
+email_from: "automation@example.com"
+```
+
+---
+
+# 🏆 What You Get
+
+You now receive:
+
+* Clean HTML email
+* Green PASS
+* Orange WARNING
+* Red FAIL
+* Full structured report
+* Log file attached
+* Enterprise ready formatting
+
+---
+
+# 📧 Example Email Preview
+
+| Component    | Status     |
+| ------------ | ---------- |
+| Istio        | 🟠 WARNING |
+| Cert Manager | 🟢 PASS    |
+| MSTR         | 🟢 PASS    |
+| Overall      | 🟢 SUCCESS |
+
+Clean. Executive friendly.
+
+---
+
+# 🚀 Next-Level Upgrade (Optional)
+
+We can also:
+
+✔ Add company logo
+✔ Add cluster name in header
+✔ Add deployment ID
+✔ Add retry mechanism if email fails
+✔ Send Slack / Teams notification
+✔ Send only on FAILURE
+
+Just tell me which level you want 😎
 
