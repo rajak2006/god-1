@@ -818,6 +818,210 @@ pre_tasks:
 ```
 
 ---
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Very very new
+
+# ==========================================================
+# GET SERVICE MESH CONTROL PLANE (SOURCE OF TRUTH)
+# ==========================================================
+
+- name: Get ServiceMeshControlPlane
+  shell: oc get smcp -A --no-headers 2>/dev/null || true
+  register: smcp_output
+  changed_when: false
+
+- name: Parse SMCP namespace
+  set_fact:
+    mesh_namespace: "{{ smcp_output.stdout.split()[0] if smcp_output.stdout else 'N/A' }}"
+
+- name: Determine SMCP presence
+  set_fact:
+    smcp_installed: "{{ true if smcp_output.stdout else false }}"
+
+# ==========================================================
+# GET ISTIOD RUNTIME STATUS
+# ==========================================================
+
+- name: Check istiod pods
+  shell: oc get pods -n {{ mesh_namespace }} --no-headers | grep istiod || true
+  register: istiod_pods
+  changed_when: false
+
+- name: Determine istiod running
+  set_fact:
+    istio_running: "{{ true if 'Running' in istiod_pods.stdout else false }}"
+
+# ==========================================================
+# GET SMMR FROM CORRECT MESH NAMESPACE
+# ==========================================================
+
+- name: Get SMMR in mesh namespace
+  shell: oc get smmr -n {{ mesh_namespace }} --no-headers 2>/dev/null || true
+  register: smmr_output
+  changed_when: false
+
+- name: Determine SMMR namespace
+  set_fact:
+    smmr_namespace: "{{ mesh_namespace if smmr_output.stdout else 'N/A' }}"
+
+- name: Count SMMR members
+  shell: oc get smmr -n {{ mesh_namespace }} -o jsonpath='{.items[*].spec.members[*]}' 2>/dev/null || true
+  register: smmr_members_raw
+  changed_when: false
+
+- name: Calculate SMMR member count
+  set_fact:
+    smmr_member_count: >
+      {{ smmr_members_raw.stdout.split() | length
+         if smmr_members_raw.stdout != ''
+         else 0 }}
+
+# ==========================================================
+# GET CERT-MANAGER VERSION (HELM BASED)
+# ==========================================================
+
+- name: Get cert-manager Helm release
+  shell: helm list -n {{ cert_manager_namespace }} --output json || true
+  register: cert_helm
+  changed_when: false
+
+- name: Parse cert-manager version
+  set_fact:
+    cert_version: >
+      {{ (cert_helm.stdout | default('[]') | from_json)[0].chart
+         if (cert_helm.stdout | default('[]') | from_json | length) > 0
+         else 'N/A' }}
+
+# ==========================================================
+# GET MSTR OPERATOR VERSION (HELM BASED)
+# ==========================================================
+
+- name: Get MSTR Helm release
+  shell: helm list -n {{ mstr_operator_namespace }} --output json || true
+  register: mstr_helm
+  changed_when: false
+
+- name: Parse MSTR chart version
+  set_fact:
+    mstr_chart_version: >
+      {{ (mstr_helm.stdout | default('[]') | from_json)[0].chart
+         if (mstr_helm.stdout | default('[]') | from_json | length) > 0
+         else 'N/A' }}
+
+# ==========================================================
+# CALCULATE COMPONENT STATUS
+# ==========================================================
+
+- name: Calculate istio_result
+  set_fact:
+    istio_result: >
+      {% if not smcp_installed or not istio_running %}
+      FAIL
+      {% elif smmr_member_count | int == 0 %}
+      WARNING
+      {% else %}
+      PASS
+      {% endif %}
+
+- name: Calculate cert_result
+  set_fact:
+    cert_result: >
+      {{ 'PASS'
+         if cert_version != 'N/A'
+         else 'FAIL' }}
+
+- name: Calculate mstr_result
+  set_fact:
+    mstr_result: >
+      {{ 'PASS'
+         if mstr_chart_version != 'N/A'
+         else 'FAIL' }}
+
+- name: Calculate overall_result
+  set_fact:
+    overall_result: >
+      {% if istio_result == 'FAIL'
+         or cert_result == 'FAIL'
+         or mstr_result == 'FAIL' %}
+      FAILED
+      {% else %}
+      SUCCESS
+      {% endif %}
+
+# ==========================================================
+# CALCULATE EXECUTION TIME
+# ==========================================================
+
+- name: Capture end time
+  set_fact:
+    deploy_end_time: "{{ lookup('pipe','date +%s') }}"
+
+- name: Calculate execution duration
+  set_fact:
+    deploy_duration: >
+      {{ (deploy_end_time | int -
+         (deploy_start_time | default(deploy_end_time) | int)) }}
+
+# ==========================================================
+# BUILD FINAL CLEAN ENTERPRISE REPORT
+# ==========================================================
+
+- name: Build final report text
+  set_fact:
+    final_report_text: |
+      ============================================================
+              MSTR PLATFORM DEPLOYMENT REPORT
+      ============================================================
+
+      OVERALL STATUS : {{ overall_result }}
+      EXECUTION TIME : {{ deploy_duration }} seconds
+
+      ------------------------------------------------------------
+      ISTIO SERVICE MESH
+      ------------------------------------------------------------
+        Namespace        : {{ mesh_namespace }}
+        SMCP Present     : {{ 'YES' if smcp_installed else 'NO' }}
+        Istiod Running   : {{ 'YES' if istio_running else 'NO' }}
+        SMMR Namespace   : {{ smmr_namespace }}
+        Member Namespaces: {{ smmr_member_count }}
+        Status           : {{ istio_result }}
+
+      ------------------------------------------------------------
+      CERT-MANAGER
+      ------------------------------------------------------------
+        Namespace        : {{ cert_manager_namespace }}
+        Version          : {{ cert_version }}
+        Status           : {{ cert_result }}
+
+      ------------------------------------------------------------
+      MSTR OPERATOR
+      ------------------------------------------------------------
+        Namespace        : {{ mstr_operator_namespace }}
+        Chart Version    : {{ mstr_chart_version }}
+        Status           : {{ mstr_result }}
+
+      ------------------------------------------------------------
+      REPORT GENERATED : {{ lookup('pipe','date') }}
+      ============================================================
+
+# ==========================================================
+# PRINT REPORT
+# ==========================================================
+
+- name: Show Enterprise Report
+  debug:
+    msg: "{{ final_report_text }}"
+
+# ==========================================================
+# WRITE SAME REPORT TO AUDIT LOG
+# ==========================================================
+
+- name: Append report to audit log
+  blockinfile:
+    path: "{{ audit_log_file }}"
+    marker: ""
+    block: "{{ final_report_text }}"
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 New
 # ==========================================================
