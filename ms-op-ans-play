@@ -2050,4 +2050,736 @@ We can also:
 ✔ Send only on FAILURE
 
 Just tell me which level you want 😎
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+  - name: Create MSTR Edge Routes
+    include_role:
+      name: mstr_routes
+
+
+Perfect 👍 — since you clarified it’s for **EDGE termination**, the setup becomes simpler and cleaner.
+
+For **edge route**:
+
+* TLS terminates at OpenShift Router
+* Backend (MSTR pod) can run HTTPS or HTTP
+* No re-encrypt needed
+* No destination CA required
+
+Now I’ll give you a **clean enterprise Ansible role structure for EDGE route**, fully dynamic using `mstr_vars.yml`.
+
+---
+
+# 🏗️ Final Enterprise Structure
+
+```
+roles/
+ └── mstr_routes/
+      ├── tasks/
+      │    └── main.yml
+      ├── templates/
+      │    ├── mstr-api-route.yaml.j2
+      │    └── mstr-web-route.yaml.j2
+```
+
+---
+
+# 1️⃣ Update `mstr_vars.yml`
+
+## 📁 `vars/mstr_vars.yml`
+
+```yaml
+# ==========================================
+# MSTR ROUTE CONFIGURATION
+# ==========================================
+
+mstr_namespace: "mstr-operator"
+
+mstr_api_service_name: "mstr-api-layer-service"
+mstr_web_service_name: "mstr-web-layer-service"
+
+mstr_api_host: "mstr-api.apps.cluster.example.com"
+mstr_web_host: "mstr-web.apps.cluster.example.com"
+
+mstr_route_termination: "edge"
+mstr_route_redirect: "Redirect"
+
+# Optional: custom cert secret created by cert-manager
+mstr_api_tls_secret: "mstr-api-tls"
+mstr_web_tls_secret: "mstr-web-tls"
+```
+
+---
+
+# 2️⃣ API Route Template (EDGE)
+
+## 📁 `roles/mstr_routes/templates/mstr-api-route.yaml.j2`
+
+```yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mstr-api-route
+  namespace: {{ mstr_namespace }}
+spec:
+  host: {{ mstr_api_host }}
+  to:
+    kind: Service
+    name: {{ mstr_api_service_name }}
+  port:
+    targetPort: 8443
+  tls:
+    termination: {{ mstr_route_termination }}
+    insecureEdgeTerminationPolicy: {{ mstr_route_redirect }}
+```
+
+---
+
+# 3️⃣ WEB Route Template (EDGE)
+
+## 📁 `roles/mstr_routes/templates/mstr-web-route.yaml.j2`
+
+```yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mstr-web-route
+  namespace: {{ mstr_namespace }}
+spec:
+  host: {{ mstr_web_host }}
+  to:
+    kind: Service
+    name: {{ mstr_web_service_name }}
+  port:
+    targetPort: 8443
+  tls:
+    termination: {{ mstr_route_termination }}
+    insecureEdgeTerminationPolicy: {{ mstr_route_redirect }}
+```
+
+---
+
+# 4️⃣ Role Tasks File
+
+## 📁 `roles/mstr_routes/tasks/main.yml`
+
+```yaml
+# ==========================================
+# CREATE EDGE ROUTES FOR MSTR
+# ==========================================
+
+- name: Create API Edge Route
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'mstr-api-route.yaml.j2') }}"
+
+- name: Create WEB Edge Route
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'mstr-web-route.yaml.j2') }}"
+
+# ==========================================
+# VERIFY ROUTES
+# ==========================================
+
+- name: Verify API route exists
+  shell: oc get route mstr-api-route -n {{ mstr_namespace }}
+  register: api_route_check
+  retries: 5
+  delay: 5
+  until: api_route_check.rc == 0
+  changed_when: false
+
+- name: Verify WEB route exists
+  shell: oc get route mstr-web-route -n {{ mstr_namespace }}
+  register: web_route_check
+  retries: 5
+  delay: 5
+  until: web_route_check.rc == 0
+  changed_when: false
+```
+
+---
+
+# 5️⃣ Include Role in Main Playbook
+
+```yaml
+- name: Create MSTR Edge Routes
+  include_role:
+    name: mstr_routes
+```
+
+Place this after MSTR operator installation.
+
+---
+
+# 🏆 What Happens Now
+
+✔ Creates edge routes
+✔ Uses dynamic hostname
+✔ Uses dynamic namespace
+✔ No manual cert injection required
+✔ Router handles TLS
+✔ Clean enterprise structure
+✔ Fully automation-ready
+
+---
+
+# 🔐 Important About EDGE
+
+With EDGE termination:
+
+```
+Client → HTTPS → Router → HTTP/HTTPS → MSTR Pod
+```
+
+If your service port is 8443:
+
+✔ Keep targetPort: 8443
+✔ Or use 8080 if backend HTTP
+
+---
+
+# 🚀 Optional Enterprise Enhancements
+
+We can also add:
+
+* Route health check with curl
+* Add route URLs into final_report
+* Auto-detect service port
+* Fail if route not admitted
+* DNS validation check
+* Add HSTS header policy
+
+---
+
+Now tell me:
+
+Do you want:
+
+1️⃣ Add route validation into final_report
+2️⃣ Add certificate creation automation
+3️⃣ Harden route for production security (HSTS, timeout, etc.)
+
+We go next level 😎
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Perfect 👍
+Your **MSTR Operator is running successfully**, and you now have:
+
+* `mstr-api-layer-deployment`
+* `mstr-web-layer-deployment`
+* Services:
+
+  * `mstr-api-layer-service` (8080, 8443)
+  * `mstr-web-layer-service` (8443)
+
+Now you want to **expose them externally using OpenShift Routes**.
+
+Good 👍 — this is the correct next step.
+
+---
+
+# 🏗️ Step 1 — Verify Services First
+
+Run:
+
+```bash
+oc get svc
+```
+
+From your output, you already have:
+
+```
+service/mstr-api-layer-service
+service/mstr-web-layer-service
+```
+
+So we create routes pointing to these services.
+
+---
+
+# 🌐 Step 2 — Create Route for MSTR API Layer
+
+Since API service exposes:
+
+```
+8080/TCP
+8443/TCP
+```
+
+You must decide:
+
+* HTTP route → port 8080
+* HTTPS route → port 8443
+
+Most enterprise setups use **edge termination**.
+
+---
+
+## ✅ Option A — Edge TLS (Recommended)
+
+```bash
+oc create route edge mstr-api-route \
+  --service=mstr-api-layer-service \
+  --port=8080
+```
+
+If using HTTPS backend:
+
+```bash
+oc create route edge mstr-api-route \
+  --service=mstr-api-layer-service \
+  --port=8443
+```
+
+---
+
+# 🌐 Step 3 — Create Route for MSTR Web Layer
+
+Web layer exposes:
+
+```
+8443/TCP
+```
+
+Create route:
+
+```bash
+oc create route edge mstr-web-route \
+  --service=mstr-web-layer-service \
+  --port=8443
+```
+
+---
+
+# 🔎 Step 4 — Verify Routes
+
+```bash
+oc get routes
+```
+
+You will see:
+
+```
+mstr-api-route
+mstr-web-route
+```
+
+To see full hostname:
+
+```bash
+oc get route mstr-web-route -o yaml
+```
+
+You’ll find:
+
+```yaml
+spec:
+  host: mstr-web-route-<namespace>.apps.cluster.domain
+```
+
+That is your external URL.
+
+---
+
+# 🏆 Production Recommended Version (YAML Based)
+
+Instead of CLI commands, use YAML.
+
+---
+
+## ✅ `mstr-api-route.yaml`
+
+```yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mstr-api-route
+spec:
+  to:
+    kind: Service
+    name: mstr-api-layer-service
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+  wildcardPolicy: None
+```
+
+Apply:
+
+```bash
+oc apply -f mstr-api-route.yaml
+```
+
+---
+
+## ✅ `mstr-web-route.yaml`
+
+```yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mstr-web-route
+spec:
+  to:
+    kind: Service
+    name: mstr-web-layer-service
+  port:
+    targetPort: 8443
+  tls:
+    termination: edge
+  wildcardPolicy: None
+```
+
+Apply:
+
+```bash
+oc apply -f mstr-web-route.yaml
+```
+
+---
+
+# 🔐 TLS Termination Options (Enterprise Explanation)
+
+| Type        | When to Use                      |
+| ----------- | -------------------------------- |
+| edge        | Router handles TLS (most common) |
+| passthrough | App handles TLS                  |
+| reencrypt   | TLS at router + backend TLS      |
+
+For MSTR production → **reencrypt** is often used.
+
+Example:
+
+```yaml
+tls:
+  termination: reencrypt
+```
+
+---
+
+# 🚀 If Using Cert-Manager Certificate
+
+If you have cert-manager installed and want custom cert:
+
+```yaml
+tls:
+  termination: edge
+  certificate: |
+    -----BEGIN CERTIFICATE-----
+    ...
+  key: |
+    -----BEGIN PRIVATE KEY-----
+    ...
+```
+
+---
+
+# 🧠 Verify Connectivity
+
+After route created:
+
+```bash
+curl -k https://mstr-web-route-<namespace>.apps.cluster.domain
+```
+
+Or open in browser.
+
+---
+
+# 📌 Important Enterprise Checklist
+
+Before production go-live ensure:
+
+✔ Route hostname matches DNS
+✔ Certificate valid
+✔ Firewall allows ingress
+✔ HSTS policy configured
+✔ Timeout configured (if long MSTR queries)
+
+---
+
+# 🏆 Final Expected Result
+
+After route creation:
+
+```bash
+oc get routes
+```
+
+You should see:
+
+```
+mstr-api-route   https://mstr-api-route-xxx.apps.cluster.com
+mstr-web-route   https://mstr-web-route-xxx.apps.cluster.com
+```
+
+Access:
+
+```
+https://mstr-web-route-xxx.apps.cluster.com
+```
+
+---
+
+If you want next:
+
+* 🔥 Automate route creation inside your Ansible playbook
+* 🔐 Configure reencrypt TLS properly
+* 🌍 Use custom hostname
+* 🛡 Add authentication (OAuth / OIDC)
+* 📈 Configure HA router settings
+
+Tell me which level you want 😎
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Perfect 👍 — since you are using **cert-manager**, the correct production approach is:
+
+> 🔐 Use **Re-encrypt Route**
+> 🎯 Router terminates external TLS
+> 🔐 Router re-encrypts to backend (mstr-web / api) using service certificate
+
+This is the **enterprise-recommended setup** for OpenShift + cert-manager.
+
+---
+
+# 🏗️ Architecture (What Happens)
+
+Client
+⬇ HTTPS
+OpenShift Router (TLS terminated with public cert from cert-manager)
+⬇ Re-encrypted HTTPS
+MSTR Web/API Service (8443)
+
+So:
+
+* External cert → Managed by cert-manager
+* Internal traffic → Still encrypted
+* No insecure HTTP
+
+---
+
+# ✅ Step 1 — Ensure Certificate Exists
+
+First confirm cert-manager created a certificate secret.
+
+```bash
+oc get certificate -n <your-namespace>
+```
+
+Then check secret:
+
+```bash
+oc get secret -n <your-namespace>
+```
+
+You should see something like:
+
+```
+mstr-web-cert
+```
+
+That secret must contain:
+
+* tls.crt
+* tls.key
+* ca.crt (optional but recommended)
+
+---
+
+# ✅ Step 2 — Create Reencrypt Route (Web Layer)
+
+Create this YAML:
+
+---
+
+## 🔹 `mstr-web-route.yaml`
+
+```yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mstr-web-route
+  namespace: <your-namespace>
+spec:
+  host: mstr-web.example.com
+  to:
+    kind: Service
+    name: mstr-web-layer-service
+  port:
+    targetPort: 8443
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+```
+
+Apply:
+
+```bash
+oc apply -f mstr-web-route.yaml
+```
+
+---
+
+# 🧠 Important: Do We Need Certificate in Route?
+
+There are 2 models:
+
+---
+
+## 🥇 Model A — cert-manager injects cert via annotation (Recommended)
+
+If your cluster supports automatic injection (most modern OCP):
+
+Add this annotation:
+
+```yaml
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+```
+
+Then cert-manager creates certificate automatically.
+
+---
+
+## 🥈 Model B — Manually Reference Secret in Route
+
+If certificate already exists:
+
+```yaml
+tls:
+  termination: reencrypt
+  certificate: |
+    -----BEGIN CERTIFICATE-----
+    (paste tls.crt)
+  key: |
+    -----BEGIN PRIVATE KEY-----
+    (paste tls.key)
+  caCertificate: |
+    -----BEGIN CERTIFICATE-----
+    (paste ca.crt)
+```
+
+But this is less dynamic.
+
+---
+
+# ✅ Step 3 — Create Reencrypt Route (API Layer)
+
+```yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mstr-api-route
+  namespace: <your-namespace>
+spec:
+  host: mstr-api.example.com
+  to:
+    kind: Service
+    name: mstr-api-layer-service
+  port:
+    targetPort: 8443
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+```
+
+Apply:
+
+```bash
+oc apply -f mstr-api-route.yaml
+```
+
+---
+
+# 🔎 Step 4 — Verify Route
+
+```bash
+oc get route
+```
+
+Then:
+
+```bash
+oc describe route mstr-web-route
+```
+
+You should see:
+
+```
+TLS Termination: reencrypt
+```
+
+---
+
+# 🔐 How Reencrypt Works (Important)
+
+| Layer           | Certificate Used                |
+| --------------- | ------------------------------- |
+| Client → Router | Public cert (from cert-manager) |
+| Router → Pod    | Backend service certificate     |
+
+For backend TLS to work properly:
+
+Your MSTR service must expose HTTPS (8443)
+Which it does.
+
+---
+
+# 🚨 Very Important Production Note
+
+If backend certificate is self-signed:
+
+You may need:
+
+```yaml
+tls:
+  termination: reencrypt
+  destinationCACertificate: |
+    -----BEGIN CERTIFICATE-----
+```
+
+This ensures router trusts backend.
+
+---
+
+# 🏆 Final Production Checklist
+
+✔ Service exposes HTTPS
+✔ cert-manager certificate created
+✔ Route termination = reencrypt
+✔ insecureEdgeTerminationPolicy = Redirect
+✔ DNS entry points to router
+
+---
+
+# 🔥 Enterprise Best Practice
+
+Use custom hostname:
+
+```yaml
+spec:
+  host: mstr.company.com
+```
+
+Instead of default generated route host.
+
+---
+
+# 🚀 Want Automation?
+
+I can give you:
+
+* Full Ansible role to create reencrypt routes
+* Auto-detect cert secret
+* Inject destination CA automatically
+* Validate route health
+* Add HSTS headers
+
+Tell me which level you want 😎
+
+
 
