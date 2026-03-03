@@ -845,10 +845,13 @@ Very very new
 
 - name: Parse SMCP namespace safely
   set_fact:
-    mesh_namespace: >
-      {{ (smcp_json.stdout | default('{}') | from_json).items[0].metadata.namespace
-         if (smcp_json.stdout | default('{}') | from_json).items | length > 0
-         else 'N/A' }}
+    mesh_namespace: >-
+      {{
+        (smcp_json.stdout | default('{}') | from_json)['items'][0]['metadata']['namespace']
+        if
+        ((smcp_json.stdout | default('{}') | from_json)['items'] | length) > 0
+        else 'N/A'
+      }}
 
 - name: Determine SMCP installed
   set_fact:
@@ -863,36 +866,38 @@ Very very new
   register: csv_json
   changed_when: false
 
-- name: Parse Service Mesh operator version
+- name: Parse Service Mesh operator version safely
   set_fact:
-    mesh_version: >
+    mesh_version: >-
       {{
         (
-          (csv_json.stdout | default('{}') | from_json).items
-          | selectattr('metadata.name','search','servicemeshoperator')
+          (csv_json.stdout | default('{}') | from_json)['items']
+          | selectattr('metadata.name', 'search', 'servicemeshoperator')
           | list
-        )[0].spec.version
+        )[0]['spec']['version']
         if
         (
-          (csv_json.stdout | default('{}') | from_json).items
-          | selectattr('metadata.name','search','servicemeshoperator')
+          (csv_json.stdout | default('{}') | from_json)['items']
+          | selectattr('metadata.name', 'search', 'servicemeshoperator')
           | list
         ) | length > 0
         else 'N/A'
       }}
 
 # ==========================================================
-# CHECK ISTIOD RUNTIME
+# CHECK ISTIOD RUNTIME STATUS
 # ==========================================================
 
 - name: Check istiod pods
-  shell: oc get pods -n {{ mesh_namespace }} --no-headers | grep istiod || true
+  shell: oc get pods -n {{ mesh_namespace }} --no-headers 2>/dev/null | grep istiod || true
   register: istiod_pods
   changed_when: false
+  when: smcp_installed
 
 - name: Determine istiod running
   set_fact:
-    istio_running: "{{ true if 'Running' in istiod_pods.stdout else false }}"
+    istio_running: "{{ 'Running' in istiod_pods.stdout }}"
+  when: smcp_installed
 
 # ==========================================================
 # GET SMMR INFO (JSON SAFE)
@@ -902,49 +907,66 @@ Very very new
   shell: oc get smmr -n {{ mesh_namespace }} -o json 2>/dev/null || true
   register: smmr_json
   changed_when: false
+  when: smcp_installed
 
 - name: Parse SMMR member count
   set_fact:
-    smmr_member_count: >
-      {{ (smmr_json.stdout | default('{}') | from_json).items[0].spec.members | length
-         if (smmr_json.stdout | default('{}') | from_json).items | length > 0
-         else 0 }}
+    smmr_member_count: >-
+      {{
+        (smmr_json.stdout | default('{}') | from_json)['items'][0]['spec']['members'] | length
+        if
+        ((smmr_json.stdout | default('{}') | from_json)['items'] | length) > 0
+        else 0
+      }}
+  when: smcp_installed
 
 - name: Set SMMR namespace
   set_fact:
     smmr_namespace: "{{ mesh_namespace if smmr_member_count | int > 0 else 'N/A' }}"
+  when: smcp_installed
+
+# Default values if SMCP not installed
+- set_fact:
+    istio_running: false
+    smmr_member_count: 0
+    smmr_namespace: "N/A"
+  when: not smcp_installed
 
 # ==========================================================
 # CERT-MANAGER VERSION (HELM BASED)
 # ==========================================================
 
 - name: Get cert-manager Helm release
-  shell: helm list -n {{ cert_manager_namespace }} --output json || true
+  shell: helm list -n {{ cert_manager_namespace }} --output json 2>/dev/null || true
   register: cert_helm
   changed_when: false
 
 - name: Parse cert-manager version
   set_fact:
-    cert_version: >
-      {{ (cert_helm.stdout | default('[]') | from_json)[0].chart
-         if (cert_helm.stdout | default('[]') | from_json | length) > 0
-         else 'N/A' }}
+    cert_version: >-
+      {{
+        (cert_helm.stdout | default('[]') | from_json)[0]['chart']
+        if (cert_helm.stdout | default('[]') | from_json | length) > 0
+        else 'N/A'
+      }}
 
 # ==========================================================
 # MSTR OPERATOR VERSION (HELM BASED)
 # ==========================================================
 
 - name: Get MSTR Helm release
-  shell: helm list -n {{ mstr_operator_namespace }} --output json || true
+  shell: helm list -n {{ mstr_operator_namespace }} --output json 2>/dev/null || true
   register: mstr_helm
   changed_when: false
 
 - name: Parse MSTR chart version
   set_fact:
-    mstr_chart_version: >
-      {{ (mstr_helm.stdout | default('[]') | from_json)[0].chart
-         if (mstr_helm.stdout | default('[]') | from_json | length) > 0
-         else 'N/A' }}
+    mstr_chart_version: >-
+      {{
+        (mstr_helm.stdout | default('[]') | from_json)[0]['chart']
+        if (mstr_helm.stdout | default('[]') | from_json | length) > 0
+        else 'N/A'
+      }}
 
 # ==========================================================
 # CALCULATE COMPONENT STATUS
@@ -952,7 +974,7 @@ Very very new
 
 - name: Calculate istio_result
   set_fact:
-    istio_result: >
+    istio_result: >-
       {% if not smcp_installed or not istio_running %}
       FAIL
       {% elif smmr_member_count | int == 0 %}
@@ -963,21 +985,15 @@ Very very new
 
 - name: Calculate cert_result
   set_fact:
-    cert_result: >
-      {{ 'PASS'
-         if cert_version != 'N/A'
-         else 'FAIL' }}
+    cert_result: "{{ 'PASS' if cert_version != 'N/A' else 'FAIL' }}"
 
 - name: Calculate mstr_result
   set_fact:
-    mstr_result: >
-      {{ 'PASS'
-         if mstr_chart_version != 'N/A'
-         else 'FAIL' }}
+    mstr_result: "{{ 'PASS' if mstr_chart_version != 'N/A' else 'FAIL' }}"
 
 - name: Calculate overall_result
   set_fact:
-    overall_result: >
+    overall_result: >-
       {% if istio_result == 'FAIL'
          or cert_result == 'FAIL'
          or mstr_result == 'FAIL' %}
@@ -996,12 +1012,10 @@ Very very new
 
 - name: Calculate execution duration
   set_fact:
-    deploy_duration: >
-      {{ (deploy_end_time | int -
-         (deploy_start_time | default(deploy_end_time) | int)) }}
+    deploy_duration: "{{ deploy_end_time | int - (deploy_start_time | default(deploy_end_time) | int) }}"
 
 # ==========================================================
-# BUILD FINAL ENTERPRISE REPORT
+# BUILD FINAL REPORT
 # ==========================================================
 
 - name: Build final report text
@@ -1060,6 +1074,8 @@ Very very new
     path: "{{ audit_log_file }}"
     marker: ""
     block: "{{ final_report_text }}"
+
+
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 New
 # ==========================================================
