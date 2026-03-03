@@ -1,20 +1,12 @@
-- name: Generate audit log file name
+# ===================================================
+# Generate audit log filename (ENTERPRISE SAFE)
+# ===================================================
+
+- name: Generate audit log file name safely
   set_fact:
-    audit_log_file: >
-      {{ audit_log_dir }}/{{ audit_log_prefix }}_{{ lookup('pipe','date +%Y%m%d_%H%M%S') | trim }}.log
+    audit_log_file: "{{ audit_log_dir }}/{{ audit_log_prefix }}_{{ ansible_date_time.iso8601_basic_short }}.log"
 
-# ==========================================================
-# GET SERVICE MESH OPERATOR VERSION (FROM CSV)
-# ==========================================================
 
-- name: Get Service Mesh CSV in mesh namespace
-  shell: oc get csv -n {{ mesh_namespace }} --no-headers | grep mesh | head -1 || true
-  register: mesh_csv
-  changed_when: false
-
-- name: Parse Service Mesh version
-  set_fact:
-    mesh_version: "{{ mesh_csv.stdout.split()[1] if mesh_csv.stdout else 'N/A' }}"
 
 
 
@@ -845,24 +837,54 @@ pre_tasks:
 Very very new
 
 # ==========================================================
-# GET SERVICE MESH CONTROL PLANE (SOURCE OF TRUTH)
+# GET SMCP (SOURCE OF TRUTH FOR MESH NAMESPACE)
 # ==========================================================
 
-- name: Get ServiceMeshControlPlane
-  shell: oc get smcp -A --no-headers 2>/dev/null || true
-  register: smcp_output
+- name: Get SMCP list (JSON)
+  shell: oc get smcp -A -o json 2>/dev/null || true
+  register: smcp_json
   changed_when: false
 
-- name: Parse SMCP namespace
+- name: Parse SMCP namespace safely
   set_fact:
-    mesh_namespace: "{{ smcp_output.stdout.split()[0] if smcp_output.stdout else 'N/A' }}"
+    mesh_namespace: >
+      {{ (smcp_json.stdout | default('{}') | from_json).items[0].metadata.namespace
+         if (smcp_json.stdout | default('{}') | from_json).items | length > 0
+         else 'N/A' }}
 
-- name: Determine SMCP presence
+- name: Determine SMCP installed
   set_fact:
-    smcp_installed: "{{ true if smcp_output.stdout else false }}"
+    smcp_installed: "{{ mesh_namespace != 'N/A' }}"
 
 # ==========================================================
-# GET ISTIOD RUNTIME STATUS
+# GET SERVICE MESH OPERATOR VERSION (CLUSTER-WIDE CSV)
+# ==========================================================
+
+- name: Get all CSVs (JSON)
+  shell: oc get csv -A -o json 2>/dev/null || true
+  register: csv_json
+  changed_when: false
+
+- name: Parse Service Mesh operator version
+  set_fact:
+    mesh_version: >
+      {{
+        (
+          (csv_json.stdout | default('{}') | from_json).items
+          | selectattr('metadata.name','search','servicemeshoperator')
+          | list
+        )[0].spec.version
+        if
+        (
+          (csv_json.stdout | default('{}') | from_json).items
+          | selectattr('metadata.name','search','servicemeshoperator')
+          | list
+        ) | length > 0
+        else 'N/A'
+      }}
+
+# ==========================================================
+# CHECK ISTIOD RUNTIME
 # ==========================================================
 
 - name: Check istiod pods
@@ -875,32 +897,27 @@ Very very new
     istio_running: "{{ true if 'Running' in istiod_pods.stdout else false }}"
 
 # ==========================================================
-# GET SMMR FROM CORRECT MESH NAMESPACE
+# GET SMMR INFO (JSON SAFE)
 # ==========================================================
 
-- name: Get SMMR in mesh namespace
-  shell: oc get smmr -n {{ mesh_namespace }} --no-headers 2>/dev/null || true
-  register: smmr_output
+- name: Get SMMR JSON
+  shell: oc get smmr -n {{ mesh_namespace }} -o json 2>/dev/null || true
+  register: smmr_json
   changed_when: false
 
-- name: Determine SMMR namespace
-  set_fact:
-    smmr_namespace: "{{ mesh_namespace if smmr_output.stdout else 'N/A' }}"
-
-- name: Count SMMR members
-  shell: oc get smmr -n {{ mesh_namespace }} -o jsonpath='{.items[*].spec.members[*]}' 2>/dev/null || true
-  register: smmr_members_raw
-  changed_when: false
-
-- name: Calculate SMMR member count
+- name: Parse SMMR member count
   set_fact:
     smmr_member_count: >
-      {{ smmr_members_raw.stdout.split() | length
-         if smmr_members_raw.stdout != ''
+      {{ (smmr_json.stdout | default('{}') | from_json).items[0].spec.members | length
+         if (smmr_json.stdout | default('{}') | from_json).items | length > 0
          else 0 }}
 
+- name: Set SMMR namespace
+  set_fact:
+    smmr_namespace: "{{ mesh_namespace if smmr_member_count | int > 0 else 'N/A' }}"
+
 # ==========================================================
-# GET CERT-MANAGER VERSION (HELM BASED)
+# CERT-MANAGER VERSION (HELM BASED)
 # ==========================================================
 
 - name: Get cert-manager Helm release
@@ -916,7 +933,7 @@ Very very new
          else 'N/A' }}
 
 # ==========================================================
-# GET MSTR OPERATOR VERSION (HELM BASED)
+# MSTR OPERATOR VERSION (HELM BASED)
 # ==========================================================
 
 - name: Get MSTR Helm release
@@ -972,12 +989,12 @@ Very very new
       {% endif %}
 
 # ==========================================================
-# CALCULATE EXECUTION TIME
+# EXECUTION TIME
 # ==========================================================
 
 - name: Capture end time
   set_fact:
-    deploy_end_time: "{{ lookup('pipe','date +%s') }}"
+    deploy_end_time: "{{ lookup('pipe','date +%s') | trim }}"
 
 - name: Calculate execution duration
   set_fact:
@@ -986,7 +1003,7 @@ Very very new
          (deploy_start_time | default(deploy_end_time) | int)) }}
 
 # ==========================================================
-# BUILD FINAL CLEAN ENTERPRISE REPORT
+# BUILD FINAL ENTERPRISE REPORT
 # ==========================================================
 
 - name: Build final report text
@@ -1003,6 +1020,7 @@ Very very new
       ISTIO SERVICE MESH
       ------------------------------------------------------------
         Namespace        : {{ mesh_namespace }}
+        Version          : {{ mesh_version }}
         SMCP Present     : {{ 'YES' if smcp_installed else 'NO' }}
         Istiod Running   : {{ 'YES' if istio_running else 'NO' }}
         SMMR Namespace   : {{ smmr_namespace }}
@@ -1028,7 +1046,7 @@ Very very new
       ============================================================
 
 # ==========================================================
-# PRINT REPORT
+# DISPLAY REPORT
 # ==========================================================
 
 - name: Show Enterprise Report
@@ -1036,7 +1054,7 @@ Very very new
     msg: "{{ final_report_text }}"
 
 # ==========================================================
-# WRITE SAME REPORT TO AUDIT LOG
+# WRITE TO AUDIT LOG
 # ==========================================================
 
 - name: Append report to audit log
