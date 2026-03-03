@@ -1,3 +1,25 @@
+- name: Generate audit log file name
+  set_fact:
+    audit_log_file: >
+      {{ audit_log_dir }}/{{ audit_log_prefix }}_{{ lookup('pipe','date +%Y%m%d_%H%M%S') | trim }}.log
+
+# ==========================================================
+# GET SERVICE MESH OPERATOR VERSION (FROM CSV)
+# ==========================================================
+
+- name: Get Service Mesh CSV in mesh namespace
+  shell: oc get csv -n {{ mesh_namespace }} --no-headers | grep mesh | head -1 || true
+  register: mesh_csv
+  changed_when: false
+
+- name: Parse Service Mesh version
+  set_fact:
+    mesh_version: "{{ mesh_csv.stdout.split()[1] if mesh_csv.stdout else 'N/A' }}"
+
+
+
+
+
 FULL END-TO-END ENTERPRISE LEVEL Ansible automation for:
 
 ✅ OpenShift login (dynamic cluster/user/password)
