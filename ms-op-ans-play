@@ -818,7 +818,168 @@ pre_tasks:
 ```
 
 ---
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+New
+# ==========================================================
+# COLLECT REQUIRED DATA
+# ==========================================================
 
+- name: Get MSTR Helm release info
+  shell: helm list -n {{ mstr_operator_namespace }} --output json || true
+  register: mstr_helm
+  changed_when: false
+
+- name: Parse MSTR version
+  set_fact:
+    mstr_chart_version: >
+      {{ (mstr_helm.stdout | from_json)[0].chart
+         if (mstr_helm.stdout | default('[]') | from_json | length) > 0
+         else 'N/A' }}
+
+- name: Get cert-manager CSV info
+  shell: oc get csv -n {{ cert_manager_namespace }} --no-headers | grep cert-manager | head -1 || true
+  register: cert_csv_info
+  changed_when: false
+
+- name: Parse cert-manager version
+  set_fact:
+    cert_version: "{{ cert_csv_info.stdout.split()[1] if cert_csv_info.stdout else 'N/A' }}"
+
+- name: Get ServiceMeshMemberRoll
+  shell: oc get smmr -A --no-headers || true
+  register: smmr_output
+  changed_when: false
+
+- name: Parse SMMR namespace
+  set_fact:
+    smmr_namespace: "{{ smmr_output.stdout.split()[0] if smmr_output.stdout else 'N/A' }}"
+
+- name: Count SMMR members
+  shell: oc get smmr -A -o jsonpath='{.items[*].spec.members[*]}' 2>/dev/null || true
+  register: smmr_members_raw
+  changed_when: false
+
+- name: Calculate SMMR member count
+  set_fact:
+    smmr_member_count: >
+      {{ smmr_members_raw.stdout.split() | length
+         if smmr_members_raw.stdout != ''
+         else 0 }}
+
+# ==========================================================
+# CALCULATE COMPONENT STATUS (SELF-CONTAINED)
+# ==========================================================
+
+- name: Calculate istio_result
+  set_fact:
+    istio_result: >
+      {{ 'PASS'
+         if smcp_installed | default(false)
+         and istio_running | default(false)
+         and smmr_member_count | int > 0
+         else 'FAIL' }}
+
+- name: Calculate cert_result
+  set_fact:
+    cert_result: >
+      {{ 'PASS'
+         if cert_installed | default(false)
+         and cert_pods_running | default(false)
+         else 'FAIL' }}
+
+- name: Calculate mstr_result
+  set_fact:
+    mstr_result: >
+      {{ 'PASS'
+         if mstr_chart_version != 'N/A'
+         else 'FAIL' }}
+
+- name: Calculate overall_result
+  set_fact:
+    overall_result: >
+      {{ 'SUCCESS'
+         if istio_result == 'PASS'
+         and cert_result == 'PASS'
+         and mstr_result == 'PASS'
+         else 'FAILED' }}
+
+# ==========================================================
+# CALCULATE EXECUTION DURATION
+# ==========================================================
+
+- name: Capture end time
+  set_fact:
+    deploy_end_time: "{{ lookup('pipe','date +%s') }}"
+
+- name: Calculate execution duration
+  set_fact:
+    deploy_duration: >
+      {{ (deploy_end_time | int - (deploy_start_time | default(deploy_end_time) | int)) }}
+
+# ==========================================================
+# BUILD FINAL ENTERPRISE REPORT
+# ==========================================================
+
+- name: Build final report text
+  set_fact:
+    final_report_text: |
+      ============================================================
+              MSTR PLATFORM DEPLOYMENT REPORT
+      ============================================================
+
+      OVERALL STATUS : {{ overall_result }}
+      EXECUTION TIME : {{ deploy_duration }} seconds
+
+      ------------------------------------------------------------
+      ISTIO SERVICE MESH
+      ------------------------------------------------------------
+        Namespace        : {{ mesh_namespace | default('N/A') }}
+        Version          : {{ mesh_version | default('N/A') }}
+        SMCP Present     : {{ 'YES' if smcp_installed | default(false) else 'NO' }}
+        Istiod Running   : {{ 'YES' if istio_running | default(false) else 'NO' }}
+        SMMR Namespace   : {{ smmr_namespace }}
+        Member Namespaces: {{ smmr_member_count }}
+        Status           : {{ istio_result }}
+
+      ------------------------------------------------------------
+      CERT-MANAGER
+      ------------------------------------------------------------
+        Namespace        : {{ cert_manager_namespace }}
+        Version          : {{ cert_version }}
+        Pods Running     : {{ 'YES' if cert_pods_running | default(false) else 'NO' }}
+        Status           : {{ cert_result }}
+
+      ------------------------------------------------------------
+      MSTR OPERATOR
+      ------------------------------------------------------------
+        Namespace        : {{ mstr_operator_namespace }}
+        Chart Version    : {{ mstr_chart_version }}
+        Status           : {{ mstr_result }}
+
+      ------------------------------------------------------------
+      REPORT GENERATED : {{ lookup('pipe','date') }}
+      ============================================================
+
+# ==========================================================
+# DISPLAY REPORT
+# ==========================================================
+
+- name: Show Enterprise Report
+  debug:
+    msg: "{{ final_report_text }}"
+
+# ==========================================================
+# WRITE SAME REPORT INTO AUDIT LOG
+# ==========================================================
+
+- name: Append report to audit log
+  blockinfile:
+    path: "{{ audit_log_file }}"
+    marker: ""
+    block: "{{ final_report_text }}"
+
+
+==========================================
 # ⭐ 4️⃣ ULTRA ENTERPRISE FINAL REPORT (WRITE SAME INFO TO LOG)
 
 This is the important part you asked earlier — same report to screen + log.
