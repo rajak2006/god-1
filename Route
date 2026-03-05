@@ -1,0 +1,144 @@
+Since your NodePort works and you now want to switch to OpenShift Routes with TLS, we will create Re-encrypt routes that forward HTTPS traffic correctly to your services.
+
+Your services expose:
+
+Service port 443 → targetPort 8443 (HTTPS inside pod)
+
+Service port 8080 → HTTP
+
+
+So the route must target the HTTPS service port (443).
+
+
+---
+
+Correct Route YAML – API Layer
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mstr-api
+  namespace: mstr-operator
+spec:
+  host: mstr-api.apps.cluster.example.com
+  to:
+    kind: Service
+    name: mstr-api-layer-service
+    weight: 100
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+
+
+---
+
+Correct Route YAML – Web Layer
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: mstr-web
+  namespace: mstr-operator
+spec:
+  host: mstr-web.apps.cluster.example.com
+  to:
+    kind: Service
+    name: mstr-web-layer-service
+    weight: 100
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+
+
+---
+
+Why reencrypt is required
+
+Your container listens on HTTPS (8443).
+
+Traffic flow will be:
+
+Client HTTPS
+      ↓
+OpenShift Router (TLS)
+      ↓
+Service port 443
+      ↓
+Pod port 8443
+
+So TLS is preserved end-to-end.
+
+
+---
+
+Apply the routes
+
+oc apply -f mstr-api-route.yaml
+oc apply -f mstr-web-route.yaml
+
+
+---
+
+Verify routes
+
+oc get route -n mstr-operator
+
+Example:
+
+NAME       HOST/PORT
+mstr-api   mstr-api.apps.cluster.company.com
+mstr-web   mstr-web.apps.cluster.company.com
+
+Access:
+
+https://mstr-web.apps.cluster.company.com
+https://mstr-api.apps.cluster.company.com
+
+
+---
+
+Important checks (very common issues)
+
+1️⃣ Ensure service port name is https
+
+oc get svc mstr-api-layer-service -n mstr-operator
+
+You should see:
+
+443/TCP  https
+
+2️⃣ Ensure pods are ready:
+
+oc get pods -n mstr-operator
+
+3️⃣ Ensure router can reach service:
+
+oc describe route mstr-web -n mstr-operator
+
+
+---
+
+Architecture after removing NodePort
+
+External User
+      ↓
+OpenShift Router
+      ↓
+Route (TLS reencrypt)
+      ↓
+Service (443)
+      ↓
+Pod (8443)
+
+This is the recommended enterprise pattern instead of NodePort.
+
+
+---
+
+If you want, I can also show you the MicroStrategy recommended production architecture on OpenShift (Route vs Istio Gateway) which many enterprises use for MSTR operator deployments.
