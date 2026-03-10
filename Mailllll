@@ -1,3 +1,23 @@
+
+The Service Mesh control plane (SMCP) in istio-system is stuck in “Pausing Install”.
+
+istiod-basic pod is running but 0/1 ready
+
+Logs show:
+
+failed to list *v1.ServiceMeshPeer: the server could not find the requested resource
+warn discovery is not ready
+
+Other components (Kiali, Grafana, Prometheus) are pending
+
+It looks like the ServiceMeshPeer CRD is missing, preventing the control plane from becoming ready.
+
+Could you please check the operator and CRDs, and advise on next steps?
+
+
+"'ccccc
+
+
 Hi Team,
 
 We are currently facing deployment issues while creating a MicroStrategy 25.10 environment in newly created namespaces (projects). During deployment, several pods remain in **Pending / Init failure** state, and the Helm installation triggered by the operator does not complete successfully.
