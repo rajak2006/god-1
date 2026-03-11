@@ -1,3 +1,19 @@
+
+---
+- name: Get current ServiceMeshMemberRoll members
+  shell: >
+    oc get smmr default -n istio-system -o jsonpath='{.spec.members}'
+  register: smmr_members
+
+- name: Add namespace to ServiceMeshMemberRoll
+  shell: |
+    oc patch smmr default -n istio-system \
+    --type='json' \
+    -p='[{"op": "add", "path": "/spec/members/-", "value": "{{ namespace }}"}]'
+  when: namespace not in smmr_members.stdout
+
+
+
 Yes 👍 — **scaling the Mobile deployment to 0** is actually a **cleaner and safer approach** than deleting the pod.
 Deleting a pod causes it to restart automatically, but **scaling to 0 stops the service intentionally**.
 
