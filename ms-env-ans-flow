@@ -295,12 +295,24 @@ audit_log_dir: ./audit_logs
 `tasks/login.yml`
 
 ```yaml
+---
 - name: Login to OpenShift
-  shell: >
-    oc login {{ ocp_api }}
-    -u {{ ocp_user }}
-    -p {{ ocp_password }}
+  shell: |
+    oc login {{ ocp_api }} \
+    -u {{ ocp_user }} \
+    -p {{ ocp_password }} \
     --insecure-skip-tls-verify
+  register: login_output
+  changed_when: false
+  failed_when: "'Login successful' not in login_output.stdout"
+
+- name: Verify OpenShift login
+  shell: oc whoami
+  register: oc_user
+
+- name: Debug logged user
+  debug:
+    msg: "Logged into OpenShift as {{ oc_user.stdout }}"
 ```
 
 ---
