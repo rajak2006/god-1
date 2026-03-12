@@ -456,8 +456,75 @@ spec:
 
 `tasks/route.yml`
 
+@@@@@@@@@@@@@@@@@@
+roles/mstr_env/templates/route.yaml.j2
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: route-{{ namespace }}
+  namespace: {{ namespace }}
+
+spec:
+  host: {{ namespace }}.{{ cluster_domain }}
+  path: /
+
+  to:
+    kind: Service
+    name: {{ ingress_service.stdout }}
+    weight: 100
+
+  port:
+    targetPort: https
+
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+    destinationCACertificate: |
+{{ ca_cert | indent(6) }}
+
+  wildcardPolicy: None
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+---
+- name: Get cluster domain
+  shell: oc get ingress.config.openshift.io cluster -o jsonpath='{.spec.domain}'
+  register: cluster_domain_result
+
+- name: Set cluster domain
+  set_fact:
+    cluster_domain: "{{ cluster_domain_result.stdout }}"
+
+- name: Get Istio ingress gateway service
+  shell: oc get svc -n {{ namespace }} -l istio=ingressgateway -o jsonpath='{.items[0].metadata.name}'
+  register: ingress_service
+
+- name: Get service CA bundle
+  shell: oc get configmap openshift-tls-ca -n {{ namespace }} -o jsonpath='{.data.ca-bundle\.crt}'
+  register: ca_bundle
+
+- name: Set CA certificate
+  set_fact:
+    ca_cert: "{{ ca_bundle.stdout }}"
+
+- name: Render route YAML
+  template:
+    src: route.yaml.j2
+    dest: /tmp/mstr-route.yaml
+
+- name: Apply route
+  shell: oc apply -f /tmp/mstr-route.yaml
+
+
+=======================================
 ```yaml
 ---
+- name: Get cluster domain
+  shell: oc get ingress.config.openshift.io cluster -o jsonpath='{.spec.domain}'
+  register: cluster_domain_result
+
+- set_fact:
+    cluster_domain: "{{ cluster_domain_result.stdout }}"
+
 - name: Get CA bundle
   shell: oc get configmap openshift-tls-ca -n {{ namespace }} -o jsonpath='{.data.ca-bundle\.crt}'
   register: ca_bundle
@@ -475,7 +542,7 @@ spec:
   shell: |
     oc create route reencrypt route-{{ mstr_env_name }} \
       --service={{ ingress_service.stdout }} \
-      --hostname={{ dns_entry }} \
+      --hostname={{ namespace }}.{{ cluster_domain }}\
       --dest-ca-cert=/tmp/route-ca.crt \
       -n {{ namespace }}
   register: route_create
