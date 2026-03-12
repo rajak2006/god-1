@@ -398,9 +398,13 @@ audit_log_dir: ./audit_logs
 `tasks/deploy_env.yml`
 
 ```yaml
+- name: Render MicroStrategy Environment YAML
+  template:
+    src: mstr-env.yaml.j2
+    dest: /tmp/mstr-env.yaml
+
 - name: Apply MicroStrategy Environment CR
-  shell: |
-    oc apply -f {{ role_path }}/templates/mstr-env.yaml.j2
+  command: oc apply -f /tmp/mstr-env.yaml
 ```
 
 ---
@@ -453,22 +457,34 @@ spec:
 `tasks/route.yml`
 
 ```yaml
+---
 - name: Get CA bundle
   shell: oc get configmap openshift-tls-ca -n {{ namespace }} -o jsonpath='{.data.ca-bundle\.crt}'
   register: ca_bundle
 
-- name: Get Istio ingress service
+- name: Save CA certificate to file
+  copy:
+    content: "{{ ca_bundle.stdout }}"
+    dest: /tmp/route-ca.crt
+
+- name: Get Istio ingress gateway service
   shell: oc get svc -n {{ namespace }} -l istio=ingressgateway -o jsonpath='{.items[0].metadata.name}'
   register: ingress_service
 
 - name: Create Route
   shell: |
     oc create route reencrypt route-{{ mstr_env_name }} \
-    --service={{ ingress_service.stdout }} \
-    --hostname={{ dns_entry }} \
-    --dest-ca-cert=<(echo "{{ ca_bundle.stdout }}") \
-    -n {{ namespace }}
+      --service={{ ingress_service.stdout }} \
+      --hostname={{ dns_entry }} \
+      --dest-ca-cert=/tmp/route-ca.crt \
+      -n {{ namespace }}
+  register: route_create
   ignore_errors: yes
+
+- name: Remove temporary CA file
+  file:
+    path: /tmp/route-ca.crt
+    state: absent
 ```
 
 ---
