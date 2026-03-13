@@ -530,3 +530,224 @@ If you'd like, I can show you how to extend the audit log so it includes:
 * Worker node count
 * Storage backend
 * Deployment duration automatically calculated.
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Yes 👍 — you can absolutely generate the **audit report as an HTML Deployment Report and send it via email** once the playbook finishes. This is actually a **great enterprise practice** because HTML reports are easier to read and share.
+
+Below is a **clean way to implement it in your Ansible role**.
+
+---
+
+# 1️⃣ Add Email Variables
+
+Update:
+
+`roles/mstr_env/defaults/main.yml`
+
+```yaml
+# Email configuration
+email_to:
+  - raj@example.com
+  - platform@example.com
+
+email_cc:
+  - sre@example.com
+
+smtp_host: smtp.example.com
+smtp_port: 25
+email_sender: ansible@mlab.example.com
+```
+
+These will be used dynamically.
+
+---
+
+# 2️⃣ Create HTML Report Template
+
+Create:
+
+```
+roles/mstr_env/templates/deployment_report.html.j2
+```
+
+```html
+<html>
+<head>
+<style>
+body {font-family: Arial; font-size: 14px;}
+h2 {color: #2c3e50;}
+table {border-collapse: collapse; width: 100%;}
+th, td {border: 1px solid #ddd; padding: 8px;}
+th {background-color: #f2f2f2;}
+.success {color: green; font-weight: bold;}
+.failed {color: red; font-weight: bold;}
+</style>
+</head>
+
+<body>
+
+<h2>MicroStrategy Environment Deployment Report</h2>
+
+<table>
+<tr><th>Timestamp</th><td>{{ ansible_date_time.iso8601 }}</td></tr>
+<tr><th>Executed By (FID)</th><td>{{ ocp_user }}</td></tr>
+<tr><th>Ansible Host</th><td>{{ ansible_hostname }}</td></tr>
+<tr><th>Cluster API</th><td>{{ ocp_api }}</td></tr>
+</table>
+
+<h3>Environment Details</h3>
+
+<table>
+<tr><th>Namespace</th><td>{{ namespace }}</td></tr>
+<tr><th>Environment Name</th><td>{{ namespace }}</td></tr>
+<tr><th>Environment Type</th><td>{{ env_type }}</td></tr>
+<tr><th>Environment Size</th><td>{{ env_size }}</td></tr>
+<tr><th>MSTR Version</th><td>{{ mstr_version }}</td></tr>
+<tr><th>DNS Entry</th><td>{{ dns_entry }}</td></tr>
+</table>
+
+<h3>Deployment Steps</h3>
+
+<table>
+<tr><th>Step</th><th>Status</th></tr>
+<tr><td>Login to OpenShift</td><td class="success">{{ step_login }}</td></tr>
+<tr><td>Validate SMCP</td><td class="success">{{ step_smcp }}</td></tr>
+<tr><td>Validate SMMR</td><td class="success">{{ step_smmr }}</td></tr>
+<tr><td>Namespace Creation</td><td class="success">{{ step_namespace }}</td></tr>
+<tr><td>Add Namespace to Mesh</td><td class="success">{{ step_mesh }}</td></tr>
+<tr><td>MSTR Environment Deployment</td><td class="success">{{ step_env_deploy }}</td></tr>
+<tr><td>Route Creation</td><td class="success">{{ step_route }}</td></tr>
+<tr><td>Environment Readiness</td><td class="success">{{ step_ready }}</td></tr>
+<tr><td>Mobile Scaled to 0</td><td class="success">{{ step_mobile_scale }}</td></tr>
+</table>
+
+<h3>Pod Status</h3>
+
+<table>
+<tr><th>Component</th><th>Status</th></tr>
+<tr><td>IServer</td><td>{{ iserver_status }}</td></tr>
+<tr><td>Library</td><td>{{ library_status }}</td></tr>
+<tr><td>Gateway</td><td>{{ gateway_status }}</td></tr>
+<tr><td>Mobile</td><td>{{ mobile_status }}</td></tr>
+</table>
+
+<h3>Access URL</h3>
+
+<p>
+<a href="https://{{ dns_entry }}">
+https://{{ dns_entry }}
+</a>
+</p>
+
+<h3>Execution Summary</h3>
+
+<table>
+<tr><th>Execution Time</th><td>{{ execution_time }}</td></tr>
+<tr><th>Playbook Result</th><td>{{ playbook_result }}</td></tr>
+</table>
+
+</body>
+</html>
+```
+
+---
+
+# 3️⃣ Generate HTML Report
+
+Create task:
+
+`roles/mstr_env/tasks/generate_html_report.yml`
+
+```yaml
+- name: Generate HTML deployment report
+  template:
+    src: deployment_report.html.j2
+    dest: "/tmp/mstr_deployment_{{ namespace }}.html"
+```
+
+---
+
+# 4️⃣ Send Email with Report
+
+Create task:
+
+`roles/mstr_env/tasks/send_email.yml`
+
+```yaml
+- name: Send deployment report email
+  mail:
+    host: "{{ smtp_host }}"
+    port: "{{ smtp_port }}"
+    subject: "MicroStrategy Deployment Report - {{ namespace }}"
+    from: "{{ email_sender }}"
+    to: "{{ email_to }}"
+    cc: "{{ email_cc }}"
+    subtype: html
+    body: "{{ lookup('file', '/tmp/mstr_deployment_' + namespace + '.html') }}"
+```
+
+---
+
+# 5️⃣ Update Main Role Execution
+
+At the end of `main.yml`:
+
+```yaml
+always:
+
+  - import_tasks: audit_log.yml
+  - import_tasks: generate_html_report.yml
+  - import_tasks: send_email.yml
+```
+
+So even if deployment fails, the report is still sent.
+
+---
+
+# 6️⃣ Result
+
+After deployment finishes:
+
+📧 Email will contain a **formatted HTML report like this**
+
+```
+MicroStrategy Environment Deployment Report
+
+Namespace: mstr-env01
+Environment Type: sandbox
+Version: 25.10
+
+Deployment Steps
+✔ Login
+✔ SMCP validation
+✔ SMMR validation
+✔ Namespace creation
+✔ Mesh add
+✔ Deployment
+✔ Route creation
+✔ Ready check
+✔ Mobile scaled
+
+Access URL
+https://mstr-env01.apps.mlab.example.com
+```
+
+Much easier to read than raw logs.
+
+---
+
+# 7️⃣ Optional (Highly Recommended)
+
+You can also **attach the report file** to the email:
+
+```yaml
+attach:
+  - "/tmp/mstr_deployment_{{ namespace }}.html"
+```
+
+---
+
+💡 If you'd like, I can also show you how to generate a **very professional HTML report (dashboard style with green/red status icons)** that looks like a **real deployment dashboard used by SRE teams**.
+
