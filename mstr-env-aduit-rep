@@ -1,0 +1,532 @@
+Nice 👍 — since you already have the role, I’ll show **exactly what to update and where**, and we’ll make the **audit file name use the namespace** as you requested.
+
+Example file name:
+
+```
+/var/log/mstr_audit_mstr-env01.log
+```
+
+---
+
+# 1️⃣ Update Variables (defaults)
+
+File:
+
+```
+roles/mstr_env/defaults/main.yml
+```
+
+Add:
+
+```yaml
+env_type: sandbox
+env_size: 64
+mstr_version: "25.10"
+
+image_registry: docker.artifactrepository.example.com/strsandbox2510
+storage_class: ocs-storage-cephfs
+storage_size: 200Gi
+
+playbook_result: SUCCESS
+execution_time: "N/A"
+```
+
+---
+
+# 2️⃣ Create Audit Log Template
+
+Create file:
+
+```
+roles/mstr_env/templates/audit_log.j2
+```
+
+Paste:
+
+```jinja
+====================================================================
+MicroStrategy Environment Deployment Audit Log
+====================================================================
+
+Timestamp              : {{ ansible_date_time.iso8601 }}
+Executed By (FID)      : {{ ocp_user }}
+Ansible Host           : {{ ansible_hostname }}
+Cluster API            : {{ ocp_api }}
+
+--------------------------------------------------------------------
+Environment Details
+--------------------------------------------------------------------
+
+Namespace              : {{ namespace }}
+Environment Name       : {{ namespace }}
+Environment Type       : {{ env_type }}
+Environment Size       : {{ env_size }}
+MicroStrategy Version  : {{ mstr_version }}
+DNS Entry              : {{ dns_entry }}
+
+Image Registry         : {{ image_registry }}
+Storage Class          : {{ storage_class }}
+Storage Size           : {{ storage_size }}
+
+--------------------------------------------------------------------
+Service Mesh Validation
+--------------------------------------------------------------------
+
+SMCP Status            : {{ smcp_status }}
+SMMR Namespace List    : {{ smmr_members }}
+
+Namespace Added To Mesh: {{ namespace }}
+
+--------------------------------------------------------------------
+Deployment Steps
+--------------------------------------------------------------------
+
+1. Login to OpenShift cluster              : {{ step_login }}
+2. Validate ServiceMeshControlPlane        : {{ step_smcp }}
+3. Validate ServiceMeshMemberRoll          : {{ step_smmr }}
+4. Namespace creation                      : {{ step_namespace }}
+5. Namespace added to mesh                 : {{ step_mesh }}
+6. MicroStrategy environment deployment    : {{ step_env_deploy }}
+7. Route creation                          : {{ step_route }}
+8. Environment readiness check             : {{ step_ready }}
+9. Mobile deployment scaled to 0           : {{ step_mobile_scale }}
+
+--------------------------------------------------------------------
+Post Deployment Details
+--------------------------------------------------------------------
+
+Environment Status     : {{ env_status }}
+IServer Pod            : {{ iserver_status }}
+Library Pod            : {{ library_status }}
+Gateway Pod            : {{ gateway_status }}
+Mobile Pod             : {{ mobile_status }}
+
+Route URL              : https://{{ dns_entry }}
+
+--------------------------------------------------------------------
+Execution Summary
+--------------------------------------------------------------------
+
+Total Execution Time   : {{ execution_time }}
+Playbook Result        : {{ playbook_result }}
+
+====================================================================
+END OF AUDIT LOG
+====================================================================
+```
+
+---
+
+# 3️⃣ Create Audit Log Task
+
+Create file:
+
+```
+roles/mstr_env/tasks/audit_log.yml
+```
+
+Add:
+
+```yaml
+- name: Set audit log file name
+  set_fact:
+    audit_log_file: "/var/log/mstr_audit_{{ namespace }}.log"
+
+- name: Generate audit log file
+  template:
+    src: audit_log.j2
+    dest: "{{ audit_log_file }}"
+```
+
+Now the audit file will always be:
+
+```
+/var/log/mstr_audit_<namespace>.log
+```
+
+Example:
+
+```
+/var/log/mstr_audit_mstr-env01.log
+```
+
+---
+
+# 4️⃣ Capture Pod Status (before audit log)
+
+Add these tasks **before the audit log step**.
+
+Example:
+
+```yaml
+- name: Get IServer pod status
+  shell: oc get pods -n {{ namespace }} | grep iserver | awk '{print $3}'
+  register: iserver_status_raw
+
+- set_fact:
+    iserver_status: "{{ iserver_status_raw.stdout }}"
+```
+
+Do the same for:
+
+```
+library
+gateway
+mobile
+```
+
+Example:
+
+```yaml
+- name: Get library pod status
+  shell: oc get pods -n {{ namespace }} | grep library | awk '{print $3}'
+  register: library_status_raw
+
+- set_fact:
+    library_status: "{{ library_status_raw.stdout }}"
+```
+
+---
+
+# 5️⃣ Add Audit Step in Main Role
+
+File:
+
+```
+roles/mstr_env/tasks/main.yml
+```
+
+Add **at the end**:
+
+```yaml
+- import_tasks: audit_log.yml
+```
+
+Example order:
+
+```yaml
+- import_tasks: login.yml
+- import_tasks: smcp_validate.yml
+- import_tasks: smmr_validate.yml
+- import_tasks: namespace.yml
+- import_tasks: add_mesh.yml
+- import_tasks: deploy_env.yml
+- import_tasks: route.yml
+- import_tasks: readiness_check.yml
+- import_tasks: scale_mobile.yml
+- import_tasks: audit_log.yml
+```
+
+---
+
+# 6️⃣ Optional: Log Directory Creation
+
+Add once:
+
+```yaml
+- name: Ensure log directory exists
+  file:
+    path: /var/log
+    state: directory
+```
+
+---
+
+# 7️⃣ Result
+
+After environment deployment:
+
+```
+/var/log/mstr_audit_mstr-env01.log
+```
+
+Content will match your format exactly.
+
+---
+
+# 8️⃣ Example Output
+
+```
+====================================================================
+MicroStrategy Environment Deployment Audit Log
+====================================================================
+
+Timestamp              : 2026-03-13T16:20:21
+Executed By (FID)      : raj123
+Ansible Host           : ansible-node01
+Cluster API            : https://api.cluster.example.com:6443
+```
+
+---
+
+💡 **One important improvement I recommend**
+
+Right now if the playbook fails, the audit log **may not be written**.
+
+A better approach is to generate the audit log using:
+
+```
+block + rescue + always
+```
+
+So the log **always writes even when deployment fails** (very important for enterprise auditing).
+
+If you'd like, I can show you that improved version.
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+Good idea 👍 — using **`block + rescue + always`** is the best enterprise pattern so the **audit log is written even if the playbook fails**.
+I’ll show you **exactly what to update** so your audit file **always gets generated** and the **filename uses the namespace**.
+
+---
+
+# 1️⃣ Update `main.yml`
+
+File:
+
+```
+roles/mstr_env/tasks/main.yml
+```
+
+Replace the normal task sequence with this structure.
+
+```yaml
+- name: Start MicroStrategy Environment Deployment
+  block:
+
+    - import_tasks: login.yml
+    - set_fact:
+        step_login: SUCCESS
+
+    - import_tasks: smcp_validate.yml
+    - set_fact:
+        step_smcp: SUCCESS
+
+    - import_tasks: smmr_validate.yml
+    - set_fact:
+        step_smmr: SUCCESS
+
+    - import_tasks: namespace.yml
+    - set_fact:
+        step_namespace: SUCCESS
+
+    - import_tasks: add_mesh.yml
+    - set_fact:
+        step_mesh: SUCCESS
+
+    - import_tasks: deploy_env.yml
+    - set_fact:
+        step_env_deploy: SUCCESS
+
+    - import_tasks: route.yml
+    - set_fact:
+        step_route: SUCCESS
+
+    - import_tasks: readiness_check.yml
+    - set_fact:
+        step_ready: SUCCESS
+
+    - import_tasks: scale_mobile.yml
+    - set_fact:
+        step_mobile_scale: SUCCESS
+
+  rescue:
+
+    - name: Mark playbook as failed
+      set_fact:
+        playbook_result: FAILED
+
+  always:
+
+    - name: Collect pod status
+      shell: oc get pods -n {{ namespace }}
+      register: pod_status
+
+    - name: Extract IServer status
+      shell: oc get pods -n {{ namespace }} | grep iserver | awk '{print $3}'
+      register: iserver_status_raw
+      ignore_errors: yes
+
+    - set_fact:
+        iserver_status: "{{ iserver_status_raw.stdout | default('Unknown') }}"
+
+    - name: Extract Library status
+      shell: oc get pods -n {{ namespace }} | grep library | awk '{print $3}'
+      register: library_status_raw
+      ignore_errors: yes
+
+    - set_fact:
+        library_status: "{{ library_status_raw.stdout | default('Unknown') }}"
+
+    - name: Extract Gateway status
+      shell: oc get pods -n {{ namespace }} | grep gateway | awk '{print $3}'
+      register: gateway_status_raw
+      ignore_errors: yes
+
+    - set_fact:
+        gateway_status: "{{ gateway_status_raw.stdout | default('Unknown') }}"
+
+    - name: Extract Mobile status
+      shell: oc get pods -n {{ namespace }} | grep mobile | awk '{print $3}'
+      register: mobile_status_raw
+      ignore_errors: yes
+
+    - set_fact:
+        mobile_status: "{{ mobile_status_raw.stdout | default('Unknown') }}"
+
+    - import_tasks: audit_log.yml
+```
+
+This ensures:
+
+```
+SUCCESS or FAILURE → audit log always created
+```
+
+---
+
+# 2️⃣ Update Audit Log Task
+
+File:
+
+```
+roles/mstr_env/tasks/audit_log.yml
+```
+
+```yaml
+- name: Ensure audit log directory exists
+  file:
+    path: /var/log/mstr
+    state: directory
+    mode: '0755'
+
+- name: Set audit log filename using namespace
+  set_fact:
+    audit_log_file: "/var/log/mstr/mstr_audit_{{ namespace }}.log"
+
+- name: Generate audit log
+  template:
+    src: audit_log.j2
+    dest: "{{ audit_log_file }}"
+```
+
+Now logs will be saved as:
+
+```
+/var/log/mstr/mstr_audit_mstr-env01.log
+```
+
+---
+
+# 3️⃣ Add Default Variables
+
+File:
+
+```
+roles/mstr_env/defaults/main.yml
+```
+
+Add:
+
+```yaml
+playbook_result: SUCCESS
+
+step_login: PENDING
+step_smcp: PENDING
+step_smmr: PENDING
+step_namespace: PENDING
+step_mesh: PENDING
+step_env_deploy: PENDING
+step_route: PENDING
+step_ready: PENDING
+step_mobile_scale: PENDING
+
+iserver_status: Unknown
+library_status: Unknown
+gateway_status: Unknown
+mobile_status: Unknown
+```
+
+This prevents **undefined variable errors**.
+
+---
+
+# 4️⃣ Resulting Audit File
+
+Example file created:
+
+```
+/var/log/mstr/mstr_audit_mstr-env01.log
+```
+
+Example content:
+
+```
+====================================================================
+MicroStrategy Environment Deployment Audit Log
+====================================================================
+
+Timestamp              : 2026-03-13T18:15:21
+Executed By (FID)      : raj123
+Ansible Host           : ansible-node01
+Cluster API            : https://api.cluster.example.com:6443
+```
+
+Even if the playbook fails halfway, the log will still show:
+
+```
+Playbook Result        : FAILED
+```
+
+---
+
+# 5️⃣ Optional (Recommended for Automation)
+
+Add **housekeeping to keep only the last 5 logs**:
+
+Add this at the end of `audit_log.yml`.
+
+```yaml
+- name: Cleanup old audit logs
+  shell: |
+    ls -t /var/log/mstr/mstr_audit_*.log | tail -n +6 | xargs rm -f
+  ignore_errors: yes
+```
+
+---
+
+# 6️⃣ Final Directory Structure
+
+Your role should look like:
+
+```
+roles/mstr_env/
+ ├── defaults
+ │   └── main.yml
+ ├── tasks
+ │   ├── main.yml
+ │   ├── login.yml
+ │   ├── smcp_validate.yml
+ │   ├── smmr_validate.yml
+ │   ├── namespace.yml
+ │   ├── add_mesh.yml
+ │   ├── deploy_env.yml
+ │   ├── route.yml
+ │   ├── readiness_check.yml
+ │   ├── scale_mobile.yml
+ │   └── audit_log.yml
+ └── templates
+     └── audit_log.j2
+```
+
+---
+
+💡 **Pro tip (very useful for SRE-level automation):**
+You can also add **cluster info, node capacity, and PVC usage into the audit log automatically**, which makes it extremely helpful for troubleshooting environment deployment issues.
+
+If you'd like, I can show you how to extend the audit log so it includes:
+
+* Cluster version
+* Worker node count
+* Storage backend
+* Deployment duration automatically calculated.
