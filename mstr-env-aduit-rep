@@ -1,3 +1,13 @@
+sendmail user@example.com <<EOF
+Subject: MicroStrategy Deployment Report
+Content-Type: text/html
+
+$(cat /tmp/mstr_deployment_mstr-env01.html)
+EOF
+
+
+@@@@@@@@@@@@@@@@@@@@@@@
+
 Nice 👍 — since you already have the role, I’ll show **exactly what to update and where**, and we’ll make the **audit file name use the namespace** as you requested.
 
 Example file name:
@@ -750,4 +760,324 @@ attach:
 ---
 
 💡 If you'd like, I can also show you how to generate a **very professional HTML report (dashboard style with green/red status icons)** that looks like a **real deployment dashboard used by SRE teams**.
+@@@@@@@@@@@@@@@@@@@@@@@@@@
+Test local
+Got it 👍 — since you want to **send the HTML deployment report using `mailx` from a RHEL / Linux 8 VM**, we’ll integrate it into your Ansible role instead of using the Ansible `mail` module.
+
+This approach works well in **enterprise environments where SMTP relay is already configured on the VM**.
+
+Below is the **clean and reliable implementation**.
+
+---
+
+# 1️⃣ Ensure `mailx` is installed on the VM
+
+Check:
+
+```bash
+mailx -V
+```
+
+If not installed:
+
+```bash
+sudo dnf install mailx -y
+```
+
+---
+
+# 2️⃣ Define Email Variables
+
+Update:
+
+`roles/mstr_env/defaults/main.yml`
+
+```yaml
+# Email configuration
+email_to: "raj@example.com platform@example.com"
+email_cc: "sre@example.com"
+
+email_sender: "ansible@mlab.example.com"
+
+smtp_server: "smtp.example.com"
+```
+
+---
+
+# 3️⃣ Generate HTML Report (already created)
+
+Example file generated:
+
+```
+/tmp/mstr_deployment_{{ namespace }}.html
+```
+
+---
+
+# 4️⃣ Send Email Using mailx
+
+Create task:
+
+`roles/mstr_env/tasks/send_email.yml`
+
+```yaml
+- name: Send deployment report email using mailx
+  shell: |
+    cat /tmp/mstr_deployment_{{ namespace }}.html | \
+    mailx \
+    -r "{{ email_sender }}" \
+    -s "MicroStrategy Deployment Report - {{ namespace }}" \
+    -c "{{ email_cc }}" \
+    -a "Content-Type: text/html" \
+    {{ email_to }}
+```
+
+Explanation:
+
+| Option | Meaning           |
+| ------ | ----------------- |
+| -r     | sender            |
+| -s     | subject           |
+| -c     | CC                |
+| -a     | HTML content type |
+
+---
+
+# 5️⃣ Attach HTML Report (Optional but Recommended)
+
+If you want to **attach the HTML file** instead of embedding:
+
+```yaml
+- name: Send email with attachment
+  shell: |
+    mailx \
+    -r "{{ email_sender }}" \
+    -s "MicroStrategy Deployment Report - {{ namespace }}" \
+    -c "{{ email_cc }}" \
+    -a /tmp/mstr_deployment_{{ namespace }}.html \
+    {{ email_to }} \
+    < /dev/null
+```
+
+---
+
+# 6️⃣ Update Main Role Execution
+
+At the end of:
+
+```
+roles/mstr_env/tasks/main.yml
+```
+
+Add:
+
+```yaml
+always:
+
+  - import_tasks: audit_log.yml
+  - import_tasks: generate_html_report.yml
+  - import_tasks: send_email.yml
+```
+
+This ensures the **email is sent even if deployment fails**.
+
+---
+
+# 7️⃣ Test Email Manually
+
+Before automation, test:
+
+```bash
+echo "<h1>Test Email</h1>" | mailx \
+-s "Test HTML Email" \
+-a "Content-Type: text/html" \
+raj@example.com
+```
+
+If email arrives correctly, automation will work.
+
+---
+
+# 8️⃣ Example Email Output
+
+Recipients will receive:
+
+```
+Subject: MicroStrategy Deployment Report - mstr-env01
+```
+
+HTML content showing:
+
+```
+Environment Details
+Deployment Steps
+Pod Status
+Access URL
+Execution Summary
+```
+
+---
+
+# 9️⃣ Security Best Practice
+
+In enterprise environments, **SMTP relay is usually restricted**, so confirm:
+
+```
+/etc/mail.rc
+```
+
+contains something like:
+
+```
+set smtp=smtp://smtp.example.com
+```
+
+---
+
+💡 **Advanced tip (recommended for your automation):**
+Instead of plain mailx, you can generate **a deployment dashboard HTML email with green/red success indicators**, making it look like a **CI/CD deployment report used by SRE teams**.
+
+If you want, I can show you a **much more professional HTML report template** that looks like a real deployment dashboard.
+@@@@@@@@@@@@@@@@@@@@@@
+
+Yes 👍 — you can **add the mail sending step into your Ansible role** using the **`sendmail` command** (or `mailx`). Since you’re on **RHEL 8**, using `sendmail` inside the role is very reliable because it usually works with the system’s SMTP relay configuration.
+
+Below is the **clean way to integrate it into your role**.
+
+---
+
+# 1️⃣ Add Email Variables
+
+Update:
+
+```
+roles/mstr_env/defaults/main.yml
+```
+
+```yaml
+# Email configuration
+email_to: "raj@example.com platform@example.com"
+email_cc: "sre@example.com"
+
+email_sender: "ansible@mlab.example.com"
+```
+
+These variables will be reused in the role.
+
+---
+
+# 2️⃣ Create Mail Task
+
+Create file:
+
+```
+roles/mstr_env/tasks/send_email.yml
+```
+
+```yaml
+- name: Send deployment report email using sendmail
+  shell: |
+    sendmail {{ email_to }} <<EOF
+    Subject: MicroStrategy Deployment Report - {{ namespace }}
+    From: {{ email_sender }}
+    Cc: {{ email_cc }}
+    Content-Type: text/html
+
+    $(cat /tmp/mstr_deployment_{{ namespace }}.html)
+    EOF
+```
+
+This will send the **HTML deployment report as email body**.
+
+---
+
+# 3️⃣ Call Email Task in Role
+
+Update:
+
+```
+roles/mstr_env/tasks/main.yml
+```
+
+Add at the end:
+
+```yaml
+always:
+
+  - import_tasks: audit_log.yml
+  - import_tasks: generate_html_report.yml
+  - import_tasks: send_email.yml
+```
+
+This ensures:
+
+```
+SUCCESS → email sent
+FAILURE → email still sent
+```
+
+---
+
+# 4️⃣ Example Email Sent
+
+Recipients will receive:
+
+```
+Subject: MicroStrategy Deployment Report - mstr-env01
+```
+
+HTML email content showing:
+
+* Environment details
+* Deployment steps
+* Pod status
+* Route URL
+* Execution summary
+
+---
+
+# 5️⃣ Optional (Attach HTML Report)
+
+If you want the report **as an attachment** instead of body:
+
+```yaml
+- name: Send deployment report attachment
+  shell: |
+    mailx \
+    -s "MicroStrategy Deployment Report - {{ namespace }}" \
+    -a /tmp/mstr_deployment_{{ namespace }}.html \
+    -c "{{ email_cc }}" \
+    {{ email_to }} < /dev/null
+```
+
+---
+
+# 6️⃣ Test from VM First
+
+Before running Ansible, test manually:
+
+```bash
+sendmail raj@example.com <<EOF
+Subject: Test Email
+Content-Type: text/html
+
+<h1>Test Email from Ansible VM</h1>
+EOF
+```
+
+If email arrives, Ansible automation will work.
+
+---
+
+💡 **Recommended improvement:**
+Since your automation already generates an **audit log**, you can also **attach both files in the email**:
+
+* HTML deployment report
+* audit log text file
+
+This gives the operations team **both a readable report and the raw audit log**.
+
+
+@@@@@@@@@@@@@@@@@@@@@@
+
 
