@@ -1,0 +1,289 @@
+
+appid: ""
+env: ""
+application: ""
+
+# Construct namespace dynamically
+namespace_name: "{{ (appid ~ '-' ~ env ~ '-' ~ application) | lower | regex_replace('[^a-z0-9-]', '-') }}"
+####namespace_name: "{{ (appid ~ '_' ~ env ~ '_' ~ application) | lower | regex_replace('[^a-z0-9_]', '-') }}"
+
+namespace_display_name: "{{ application }} ({{ env }})"
+namespace_description: "Namespace for {{ application }} in {{ env }}"
+-------------------------
+. Role Tasks (Core Logic)
+roles/ocp_namespace/tasks/main.yml
+- name: Validate required variables
+  fail:
+    msg: "appid, env, and application must be provided"
+  when: appid == "" or env == "" or application == ""
+
+- name: Show computed namespace
+  debug:
+    msg: "Namespace will be: {{ namespace_name }}"
+
+# Check if namespace exists
+- name: Check if namespace exists
+  shell: oc get project {{ namespace_name }} --no-headers
+  register: ns_check
+  ignore_errors: true
+  changed_when: false
+
+# Create namespace if not exists
+- name: Create namespace
+  shell: oc new-project {{ namespace_name }}
+  when: ns_check.rc != 0
+
+# Add annotations
+- name: Set display name
+  shell: >
+    oc annotate namespace {{ namespace_name }}
+    openshift.io/display-name="{{ namespace_display_name }}" --overwrite
+
+- name: Set description
+  shell: >
+    oc annotate namespace {{ namespace_name }}
+    openshift.io/description="{{ namespace_description }}" --overwrite
+
+# Optional: Add labels (best practice)
+- name: Add labels
+  shell: >
+    oc label namespace {{ namespace_name }}
+    appid={{ appid }}
+    env={{ env }}
+    application={{ application }} --overwrite
+
+
+============================================================
+
+
+Great — here’s a **ready-to-use enterprise-grade Helm chart skeleton** with:
+
+* ✅ Standard labels (your requirement)
+* ✅ Best practices (`_helpers.tpl`)
+* ✅ Clean structure
+* ✅ Works with your Ansible inputs
+
+---
+
+# 📁 1. Helm Chart Structure
+
+```bash
+mstr-app/
+├── Chart.yaml
+├── values.yaml
+├── templates/
+│   ├── _helpers.tpl
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── namespace.yaml (optional)
+```
+
+---
+
+# 📦 2. Chart.yaml
+
+```yaml
+apiVersion: v2
+name: mstr-app
+description: Master application Helm chart
+type: application
+version: 0.1.0
+appVersion: "1.0"
+```
+
+---
+
+# ⚙️ 3. values.yaml (INPUTS FROM ANSIBLE)
+
+```yaml
+appid: ""
+env: ""
+application: ""
+version: ""
+teamdl: ""
+
+image:
+  repository: nginx
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 80
+```
+
+---
+
+# 🧠 4. _helpers.tpl (MOST IMPORTANT)
+
+This is where enterprise magic happens.
+
+```yaml
+{{/*
+Generate namespace
+*/}}
+{{- define "mstr.namespace" -}}
+{{- printf "%s-%s-%s" .Values.appid .Values.env .Values.application | lower | regexReplaceAll "[^a-z0-9-]" "-" | trimAll "-" -}}
+{{- end }}
+
+{{/*
+Common Labels
+*/}}
+{{- define "mstr.labels" -}}
+app.kubernetes.io/name: {{ .Values.application | quote }}
+app.kubernetes.io/instance: {{ .Values.appid | quote }}
+app.kubernetes.io/version: {{ .Values.version | quote }}
+app.kubernetes.io/managed-by: {{ .Values.teamdl | quote }}
+{{- end }}
+
+{{/*
+Selector Labels (important for deployment)
+*/}}
+{{- define "mstr.selectorLabels" -}}
+app.kubernetes.io/name: {{ .Values.application | quote }}
+app.kubernetes.io/instance: {{ .Values.appid | quote }}
+{{- end }}
+```
+
+---
+
+# 🚀 5. Deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.application }}
+  labels:
+    {{- include "mstr.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mstr.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mstr.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Values.application }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 80
+```
+
+---
+
+# 🌐 6. Service.yaml
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.application }}
+  labels:
+    {{- include "mstr.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "mstr.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: 80
+```
+
+---
+
+# 🧪 7. Test Render (VERY IMPORTANT)
+
+Before deploying:
+
+```bash
+helm template test ./mstr-app \
+  --set appid=12345 \
+  --set env=dev \
+  --set application=example1 \
+  --set version=123 \
+  --set teamdl=maildl@gmail.com
+```
+
+---
+
+# ▶️ 8. Deploy via Ansible
+
+### Task:
+
+```yaml
+- name: Deploy Helm chart
+  shell: >
+    helm upgrade --install {{ application }}
+    ./mstr-app
+    --namespace {{ namespace_name }}
+    --create-namespace
+    --set appid={{ appid }}
+    --set env={{ env }}
+    --set application={{ application }}
+    --set version={{ version }}
+    --set teamdl={{ teamdl }}
+```
+
+---
+
+# ✅ 9. Output (What You Get)
+
+## Namespace:
+
+```
+12345-dev-example1
+```
+
+## Labels everywhere:
+
+```yaml
+app.kubernetes.io/name: example1
+app.kubernetes.io/instance: 12345
+app.kubernetes.io/version: 123
+app.kubernetes.io/managed-by: maildl@gmail.com
+```
+
+Applied to:
+
+* ✅ Deployment
+* ✅ Pods
+* ✅ Service
+* ✅ Any future resource
+
+---
+
+# 🏆 10. Enterprise Best Practices Included
+
+✔ Centralized labels (`_helpers.tpl`)
+✔ No duplication
+✔ Consistent naming
+✔ Helm-driven deployment
+✔ Ansible just orchestrates
+
+---
+
+# 🔥 Optional (Next Level Enhancements)
+
+If you want to go **full enterprise**, I can extend this with:
+
+* 🔐 ResourceQuota + LimitRange
+* 🔁 Horizontal Pod Autoscaler (HPA)
+* 🌍 OpenShift Route / Ingress
+* 🔒 SecurityContext (restricted SCC compliant)
+* 📊 Prometheus annotations
+* 🧾 Kyverno policy bundle
+* 🚀 GitOps using Argo CD
+
+---
+
+Just tell me what you want next:
+👉 “add security” / “add autoscaling” / “add route” / “full enterprise bundle”
+
+
+==============================
