@@ -1,3 +1,29 @@
+# Knative Serving
+- apiGroups: ["serving.knative.dev"]
+  resources: ["routes", "configurations", "domainmappings"]
+  verbs: ["get", "list", "watch"]
+
+# Knative Sources
+- apiGroups: ["sources.knative.dev"]
+  resources: [
+    "apiserversources",
+    "sinkbindings",
+    "pingsources",
+    "containersources",
+    "integrationsources"
+  ]
+  verbs: ["get", "list", "watch"]
+
+# Knative Sinks
+- apiGroups: ["sinks.knative.dev"]
+  resources: [
+    "jobsinks",
+    "integrationsinks"
+  ]
+  verbs: ["get", "list", "watch"]
+
+
+
 LDAP-based Functional IDs can be reused across multiple OpenShift clusters, but each cluster must independently integrate with LDAP and explicitly bind the user’s groups to appropriate roles to grant access.
 An LDAP-based Functional ID can authenticate to any OpenShift cluster that trusts the same LDAP provider, but it has no permissions by default. Access is granted only after the user’s LDAP group is synchronized into the cluster and bound to appropriate roles using OpenShift RBAC.
 
