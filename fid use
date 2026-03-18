@@ -951,3 +951,156 @@ ClusterRole → for cluster-level operations
 ClusterRoleBinding → assign to FID user or AD group
 
 Namespace isolation → per environment
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+New
+
+Ansible Structure
+ mstr-automation/
+├── playbook.yml
+├── vars/
+│   └── common_vars.yml
+├── secrets.yml   (vault)
+├── roles/
+│   └── mstr_full/
+│       └── tasks/
+│           └── main.yml
+
+secrets.yml (vault)
+ ocp_token: <PASTE_TOKEN>
+Encrypt:
+ ansible-vault encrypt secrets.yml
+
+
+playbook.yml
+vars_files:
+- vars/common_vars.yml
+- secrets.yml
+
+main.yml 
+# ---------- LOGIN ----------
+- name: Login using token
+shell: |
+oc login {{ ocp_api }} --token={{ ocp_token }} --insecure-skip-tls-verify
+
+
+Got you 👍 — you want ONE single FID user + ONE RBAC that can handle:
+ ✔ MSTR Operator deployment
+✔ MSTR Environment creation
+✔ Istio + Cert-manager validation
+✔ Routes + Namespace + Helm + CRDs
+ And you want it clean, production-safe, but complete.
+
+ 🎯 🔐 FINAL DESIGN (Single RBAC for both)
+ We will create:
+ ✅ 1 ClusterRole → for everything
+✅ 1 ClusterRoleBinding → assign to FID user
+❌ No separate Role/RoleBinding needed (simplifies ops)
+
+ 📦 ✅ SINGLE END-TO-END RBAC YAML
+ mstr-fid-full-rbac.yaml
+ # ==================================================
+# 🔹 ClusterRole (Full MSTR Automation Access)
+# ==================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mstr-fid-full-access
+rules:
+
+# ---------- Core ----------
+- apiGroups: [""]
+  resources:
+    - namespaces
+    - pods
+    - services
+    - endpoints
+    - configmaps
+    - secrets
+    - persistentvolumeclaims
+    - events
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# ---------- Workloads ----------
+- apiGroups: ["apps"]
+  resources:
+    - deployments
+    - statefulsets
+    - daemonsets
+    - replicasets
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# ---------- Batch ----------
+- apiGroups: ["batch"]
+  resources:
+    - jobs
+    - cronjobs
+  verbs: ["get", "list", "watch", "create", "update", "delete"]
+
+# ---------- OpenShift Routes ----------
+- apiGroups: ["route.openshift.io"]
+  resources:
+    - routes
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# ---------- Istio / Maistra ----------
+- apiGroups: ["maistra.io"]
+  resources:
+    - servicemeshcontrolplanes
+    - servicemeshmemberrolls
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+# ---------- Cert Manager ----------
+- apiGroups: ["cert-manager.io"]
+  resources:
+    - certificates
+    - issuers
+    - clusterissuers
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+# ---------- Operators ----------
+- apiGroups: ["operators.coreos.com"]
+  resources:
+    - subscriptions
+    - clusterserviceversions
+    - operatorgroups
+  verbs: ["get", "list", "watch", "create", "update"]
+
+# ---------- Helm (Secrets used by Helm releases) ----------
+- apiGroups: [""]
+  resources:
+    - secrets
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# ---------- CRDs ----------
+- apiGroups: ["apiextensions.k8s.io"]
+  resources:
+    - customresourcedefinitions
+  verbs: ["get", "list", "watch"]
+
+---
+# ==================================================
+# 🔹 ClusterRoleBinding (Bind to FID user)
+# ==================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mstr-fid-full-access-binding
+subjects:
+- kind: User
+  name: fid-user     # 🔁 CHANGE THIS
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: mstr-fid-full-access
+  apiGroup: rbac.authorization.k8s.io
+
+▶️ Apply
+ oc apply -f mstr-fid-full-rbac.yaml
+
+🔍 Validate (VERY IMPORTANT)
+ oc auth can-i create namespace --as=fid-user
+oc auth can-i create deployment --as=fid-user -n matr-env
+oc auth can-i create route --as=fid-user -n matr-env
+oc auth can-i get smcp --as=fid-user -n istio-system
+oc auth can-i create secret --as=fid-user -n mstr-operator
