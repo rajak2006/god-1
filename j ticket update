@@ -1,0 +1,67 @@
+We have developed an Ansible playbook to automate the creation of the MicroStrategy (MSTR) environment, and the deployment process is functioning as expected.
+
+During integration with the FID user, we encountered an issue with the route hostname configuration. Previously, routes were created to directly expose the service/pod, which does not align with the required hostname configuration. The FID user does not have sufficient privileges to modify or add host entries in the route, as per OpenShift guidelines—this action is restricted to cluster-admin level access.
+
+Additionally, based on MicroStrategy documentation, the recommended connection flow must follow:
+User → DNS → Route → Istio Gateway → MSTR VirtualService → Pods
+
+To align with this architecture and resolve the hostname issue, we are currently working on implementing the correct routing approach through Istio Gateway and VirtualService.
+
+Ansible work flow:
+=================
+1) Login to OpenShift
+
+Use oc login via FID
+
+Ensure correct cluster access and permissions
+
+2) Validate SMCP (Service Mesh Control Plane)
+
+Check SMCP status in istio-system namespace
+
+Confirm it is in Ready state with no errors
+
+3) Validate SMMR (Service Mesh Member Roll)
+
+Verify smmr resource exists
+
+Ensure required namespaces are listed under members
+
+4) Create Namespace
+
+Create a new namespace for deployment
+
+5) Add Namespace to Mesh (only if missing)
+
+Edit SMMR and add namespace to members
+
+Skip if already present
+
+6) Render MicroStrategy YAML
+
+Generate deployment YAML using Helm/script/template
+
+Validate configuration before applying
+
+7) Apply MicroStrategy Environment
+
+
+8) Ensure all components are created
+
+9) Create Route
+
+Expose service using oc expose or Route YAML and Confirm external URL is generated
+
+10) Wait for READY
+
+Check pods are in Running state
+
+Ensure all containers are ready
+
+11) Audit Log
+
+Capture logs and execution steps
+
+Store for troubleshooting and tracking
+
+12) Mail send 
