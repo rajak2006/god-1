@@ -1,10 +1,31 @@
 User → DNS → Route → Istio Gateway → MSTR VirtualService → Pods
-
+Passthrough sends traffic as-is to Istio, so Istio can correctly identify and route it.
+Reencrypt breaks that by modifying the traffic before Istio sees it.
 Love this question 👌 — this is exactly the kind of thing you want to explain clearly to others (and avoid painful production issues later).
 
 Let’s break it down in a way you can **present to your team confidently**.
+=============================
+apiVersion: route.openshift.io/v1
+kind: Route
 
----
+metadata:
+  name: route-{{ namespace }}
+  namespace: {{ namespace }}
+
+spec:
+  to:
+    kind: Service
+    name: {{ istio_ingress_service }}
+
+  port:
+    targetPort: https
+
+  tls:
+    termination: passthrough
+
+  wildcardPolicy: None
+
+====================
 
 # 🎯 The Core Decision
 
