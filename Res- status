@@ -554,3 +554,246 @@ Just tell me 👍
       'ready': pod_ready.stdout,
       'status': pod_status
     } ] }}"
+
+
+
+@@@@@@@@@@@@@@@@@@@@@@@
+html
+Perfect 👍 Raj — here is your **complete END-TO-END solution** for:
+
+> ✅ Collect all pods
+> ✅ Generate responsive HTML report
+> ✅ Apply color logic
+> ✅ Save report
+> ✅ (Optional) email
+> ✅ Ready for enterprise use
+
+---
+
+# 📄 ✅ FINAL END-TO-END PLAYBOOK (Pods Audit Report)
+
+```yaml
+- name: Kubernetes Namespace Pod Audit Report
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    namespace: mstr-env
+    report_path: "/tmp/k8s_pod_report_{{ namespace }}.html"
+
+  tasks:
+
+  # ----------------------------------------
+  # GET ALL PODS
+  # ----------------------------------------
+  - name: Get all pods
+    shell: oc get pods -n {{ namespace }} -o wide --no-headers
+    register: pod_list
+
+  # ----------------------------------------
+  # PARSE POD DATA
+  # ----------------------------------------
+  - name: Build structured pod list
+    set_fact:
+      pods: "{{ pods | default([]) + [ {
+        'name': item.split()[0],
+        'ready': item.split()[1],
+        'status': item.split()[2],
+        'restarts': item.split()[3],
+        'age': item.split()[4],
+        'node': item.split()[6] | default('N/A')
+      } ] }}"
+    loop: "{{ pod_list.stdout_lines }}"
+
+  # ----------------------------------------
+  # GENERATE HTML REPORT
+  # ----------------------------------------
+  - name: Generate HTML report
+    template:
+      src: k8s_pod_report.html.j2
+      dest: "{{ report_path }}"
+
+  # ----------------------------------------
+  # SHOW LOCATION
+  # ----------------------------------------
+  - name: Show report location
+    debug:
+      msg: "Report generated at {{ report_path }}"
+```
+
+---
+
+# 📄 ✅ HTML TEMPLATE
+
+📁 `templates/k8s_pod_report.html.j2`
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body { font-family: Arial; background: #f4f6f8; padding: 20px; }
+h1 { text-align: center; color: #2c3e50; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+th, td {
+  padding: 10px;
+  border: 1px solid #ddd;
+}
+
+th {
+  background: #2c3e50;
+  color: white;
+}
+
+tr:nth-child(even) { background: #f9f9f9; }
+tr:hover { background: #eef5ff; }
+
+/* TABLE STATUS COLORS ONLY */
+td.status-running { color: green; font-weight: bold; }
+td.status-failed { color: red; font-weight: bold; }
+td.status-warning { color: orange; font-weight: bold; }
+
+.legend { margin-top: 20px; }
+</style>
+</head>
+
+<body>
+
+<h1>Kubernetes Audit Report</h1>
+
+<p><b>Namespace:</b> {{ namespace }}</p>
+<p><b>Generated:</b> {{ ansible_date_time.iso8601 }}</p>
+<p><b>Total Pods:</b> {{ pods | length }}</p>
+
+<table>
+<tr>
+  <th>Pod Name</th>
+  <th>Namespace</th>
+  <th>Status</th>
+  <th>Node</th>
+  <th>Restart Count</th>
+  <th>Age</th>
+</tr>
+
+{% for pod in pods %}
+<tr>
+  <td>{{ pod.name }}</td>
+  <td>{{ namespace }}</td>
+
+  <td class="
+    {% if pod.status == 'Running' %}
+      status-running
+    {% elif pod.status in ['CrashLoopBackOff','Error','Failed'] %}
+      status-failed
+    {% else %}
+      status-warning
+    {% endif %}
+  ">
+    {{ pod.status }}
+  </td>
+
+  <td>{{ pod.node }}</td>
+
+  <td style="{% if pod.restarts|int > 3 %}background:#ffe6e6{% endif %}">
+    {{ pod.restarts }}
+  </td>
+
+  <td>{{ pod.age }}</td>
+</tr>
+{% endfor %}
+
+</table>
+
+<div class="legend">
+<b>Status Legend:</b><br><br>
+<span>● <span style="color:green;">Running</span></span><br>
+<span>● <span style="color:orange;">Pending / Starting</span></span><br>
+<span>● <span style="color:red;">Failed / Error</span></span>
+</div>
+
+</body>
+</html>
+```
+
+---
+
+# ▶️ RUN PLAYBOOK
+
+```bash
+ansible-playbook k8s_pod_report.yaml
+```
+
+---
+
+# 📂 OUTPUT
+
+```bash
+/tmp/k8s_pod_report_mstr-env.html
+```
+
+---
+
+# 👀 VIEW REPORT
+
+```bash
+xdg-open /tmp/k8s_pod_report_mstr-env.html
+```
+
+or download via `scp`
+
+---
+
+# 🎯 FINAL OUTPUT (WHAT YOU SEE)
+
+✔ All pods in namespace
+✔ Status colored:
+
+* 🟢 Running
+* 🟠 Pending
+* 🔴 Failed
+
+✔ Restart highlight
+✔ Node info
+✔ Clean UI
+✔ Responsive
+
+---
+
+# 🚀 OPTIONAL EMAIL
+
+```yaml
+- name: Send report
+  mail:
+    subject: "K8s Pod Report - {{ namespace }}"
+    to: "{{ email_to }}"
+    subtype: html
+    body: "{{ lookup('file', report_path) }}"
+```
+
+---
+
+# 🧠 YOU NOW HAVE
+
+✔ Full automation
+✔ Real-time audit
+✔ HTML reporting
+✔ Enterprise-ready solution
+
+---
+
+If you want next:
+
+👉 Add CPU/Memory usage
+👉 Auto-alert on failures
+👉 Historical report storage (last 5 runs)
+
+Just tell me 👍
+
