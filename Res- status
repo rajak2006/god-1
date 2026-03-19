@@ -488,4 +488,69 @@ If you want next level:
 * 🚨 Auto-alert when critical pods fail
 
 Just tell me 👍
+=======================================
+# ----------------------------------------
+# WAIT FOR POD TO BE RUNNING (NON-BLOCKING)
+# ----------------------------------------
+- name: Wait until pod phase is Running
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.phase}'
+  register: pod_phase
+  until: pod_phase.stdout == "Running"
+  retries: 20
+  delay: 15
+  failed_when: false
 
+# ----------------------------------------
+# WAIT FOR CONTAINERS READY (NON-BLOCKING)
+# ----------------------------------------
+- name: Wait until all containers are Ready
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.containerStatuses[*].ready}'
+  register: pod_ready
+  until: "'false' not in pod_ready.stdout"
+  retries: 20
+  delay: 15
+  failed_when: false
+
+# ----------------------------------------
+# EVALUATE FINAL STATUS
+# ----------------------------------------
+- name: Evaluate pod health
+  set_fact:
+    pod_status: >-
+      {% if pod_phase.stdout == "Running" and ('false' not in pod_ready.stdout) %}
+      SUCCESS
+      {% else %}
+      FAILED
+      {% endif %}
+
+# ----------------------------------------
+# PRINT RESULT
+# ----------------------------------------
+- name: Show pod status
+  debug:
+    msg: >
+      Pod {{ pod_name }} → Phase={{ pod_phase.stdout }}
+      Ready={{ pod_ready.stdout }}
+      Status={{ pod_status }}
+
+# ----------------------------------------
+# WARN (DO NOT FAIL PLAYBOOK)
+# ----------------------------------------
+- name: Warn if pod not healthy
+  debug:
+    msg: >
+      WARNING: {{ pod_name }} did not reach Running/Ready state.
+      Please check with supporting team.
+  when: pod_status == "FAILED"
+
+# ----------------------------------------
+# APPEND TO AUDIT REPORT
+# ----------------------------------------
+- name: Add to audit report
+  set_fact:
+    audit_results: "{{ audit_results | default([]) + [ {
+      'pod': pod_name,
+      'phase': pod_phase.stdout,
+      'ready': pod_ready.stdout,
+      'status': pod_status
+    } ] }}"
