@@ -1845,4 +1845,25 @@ If you want next level:
 👉 Auto-trigger alert (email/Slack)
 
 Just tell me 👍
+@@@@@@@@@@@@@@
 
+# ----------------------------------------
+# GET ALL PODS (FOR HTML SECTION 2)
+# ----------------------------------------
+- name: Get all pods
+  shell: oc get pods -n {{ namespace }} -o wide --no-headers
+  register: pod_list
+
+# ----------------------------------------
+# PARSE POD DATA
+# ----------------------------------------
+- name: Build pod list
+  set_fact:
+    pods: "{{ pods | default([]) + [ {
+      'name': item.split()[0],
+      'status': item.split()[2],
+      'restarts': item.split()[3],
+      'age': item.split()[4],
+      'node': item.split()[6] | default('N/A')
+    } ] }}"
+  loop: "{{ pod_list.stdout_lines }}"
