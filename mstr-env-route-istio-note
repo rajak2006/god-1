@@ -1,3 +1,7 @@
+The default OpenShift route hostname does not match the Istio VirtualService host configuration, so traffic is not routed correctly unless we align the host or override it.
+
+OpenShift Route generates a hostname, but Istio routes traffic based on the Host header. If the hostname does not match what Istio expects in VirtualService, traffic will fail.
+
 User → DNS → Route → Istio Gateway → MSTR VirtualService → Pods
 Passthrough sends traffic as-is to Istio, so Istio can correctly identify and route it.
 Reencrypt breaks that by modifying the traffic before Istio sees it.
