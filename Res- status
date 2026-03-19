@@ -1326,3 +1326,276 @@ If you want next level:
 👉 Add execution time per component
 
 Just tell me 👍
+
+
+
+
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+new one for all
+------------------
+
+<!DOCTYPE html>
+<html>
+<body style="font-family: Arial; background:#f4f6f8; padding:20px;">
+
+<h2 style="text-align:center; color:#2c3e50;">
+  Kubernetes & MicroStrategy Audit Report
+</h2>
+
+<p><b>Namespace:</b> {{ namespace }}</p>
+<p><b>Generated:</b> {{ ansible_date_time.iso8601 }}</p>
+
+<hr>
+
+<!-- ===================================== -->
+<!-- 🔹 SECTION 1: RESTART AUDIT (PRIMARY) -->
+<!-- ===================================== -->
+
+<h3 style="color:#2c3e50;">MicroStrategy Restart Audit</h3>
+
+<p><b>Total Components:</b> {{ audit_results | length }}</p>
+
+<p>
+✔ Success: {{ audit_results | selectattr('status','equalto','SUCCESS') | list | length }} |
+❌ Failed: {{ audit_results | selectattr('status','equalto','FAILED') | list | length }}
+</p>
+
+<table style="width:100%; border-collapse:collapse; background:white;">
+
+<tr style="background:#2c3e50; color:white;">
+  <th style="padding:10px; border:1px solid #ddd;">Component</th>
+  <th style="padding:10px; border:1px solid #ddd;">Pod</th>
+  <th style="padding:10px; border:1px solid #ddd;">Status</th>
+  <th style="padding:10px; border:1px solid #ddd;">Phase</th>
+  <th style="padding:10px; border:1px solid #ddd;">Failed Containers</th>
+  <th style="padding:10px; border:1px solid #ddd;">Message</th>
+</tr>
+
+{% for item in audit_results %}
+<tr style="{% if item.status == 'FAILED' %}background:#ffe6e6;{% endif %}">
+
+  <td style="padding:10px; border:1px solid #ddd;">{{ item.component }}</td>
+
+  <td style="padding:10px; border:1px solid #ddd;">{{ item.pod }}</td>
+
+  <td style="padding:10px; border:1px solid #ddd;
+    {% if item.status == 'SUCCESS' %}
+      color:green; font-weight:bold;
+    {% else %}
+      color:red; font-weight:bold;
+    {% endif %}
+  ">
+    {{ item.status }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {{ item.phase }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {% if item.failed_containers | length > 0 %}
+      <span style="color:red; font-weight:bold;">
+        {{ item.failed_containers | join(', ') }}
+      </span>
+    {% else %}
+      <span style="color:green;">None</span>
+    {% endif %}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;
+    {% if item.status == 'FAILED' %}
+      color:red; font-weight:bold;
+    {% endif %}
+  ">
+    {{ item.message }}
+  </td>
+
+</tr>
+{% endfor %}
+
+</table>
+
+<br>
+
+<b>Restart Audit Legend:</b><br><br>
+<span style="color:green; font-weight:bold;">● SUCCESS (All containers ready)</span><br>
+<span style="color:red; font-weight:bold;">● FAILED (Container issues detected)</span>
+
+<hr>
+
+<!-- ===================================== -->
+<!-- 🔹 SECTION 2: FULL POD LIST -->
+<!-- ===================================== -->
+
+<h3 style="color:#2c3e50;">Namespace Pod Status</h3>
+
+<p><b>Total Pods:</b> {{ pods | length }}</p>
+
+<table style="width:100%; border-collapse:collapse; background:white;">
+
+<tr style="background:#2c3e50; color:white;">
+  <th style="padding:10px; border:1px solid #ddd;">Pod Name</th>
+  <th style="padding:10px; border:1px solid #ddd;">Status</th>
+  <th style="padding:10px; border:1px solid #ddd;">Node</th>
+  <th style="padding:10px; border:1px solid #ddd;">Restarts</th>
+  <th style="padding:10px; border:1px solid #ddd;">Age</th>
+</tr>
+
+{% for pod in pods %}
+<tr>
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {{ pod.name }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;
+    {% if pod.status == 'Running' %}
+      color:green; font-weight:bold;
+    {% elif pod.status in ['CrashLoopBackOff','Error','Failed'] %}
+      color:red; font-weight:bold;
+    {% else %}
+      color:orange; font-weight:bold;
+    {% endif %}
+  ">
+    {{ pod.status }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {{ pod.node }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;
+    {% if pod.restarts|int > 3 %}
+      background:#ffe6e6;
+    {% endif %}
+  ">
+    {{ pod.restarts }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {{ pod.age }}
+  </td>
+
+</tr>
+{% endfor %}
+
+</table>
+
+<br>
+
+<b>Status Legend:</b><br><br>
+<span style="color:green; font-weight:bold;">● Running</span><br>
+<span style="color:orange; font-weight:bold;">● Pending / Starting</span><br>
+<span style="color:red; font-weight:bold;">● Failed / Error</span>
+
+</body>
+</html>
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++==
+1️⃣ END-TO-END PLAYBOOK (FULL LOGIC)
+- name: MicroStrategy Restart Audit with Container Validation
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    namespace: mstr-env
+    report_path: "/tmp/mstr_audit_report_{{ namespace }}.html"
+
+    restart_targets:
+      - name: library
+        selector: library
+      - name: iserver
+        selector: iserver
+
+  tasks:
+
+  # ----------------------------------------
+  # INIT AUDIT LIST
+  # ----------------------------------------
+  - name: Initialize audit list
+    set_fact:
+      audit_results: []
+
+  # ----------------------------------------
+  # LOOP COMPONENTS
+  # ----------------------------------------
+  - name: Process components
+    loop: "{{ restart_targets }}"
+    loop_control:
+      label: "{{ item.name }}"
+    block:
+
+      # ---- GET POD NAME ----
+      - name: Get pod name
+        shell: oc get pods -n {{ namespace }} --no-headers | grep {{ item.selector }} | grep -v Terminating | awk '{print $1}' | head -1
+        register: pod_name_out
+
+      - set_fact:
+          pod_name: "{{ pod_name_out.stdout }}"
+
+      # ---- WAIT FOR RUNNING ----
+      - name: Wait until Running
+        shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.phase}'
+        register: pod_phase
+        until: pod_phase.stdout == "Running"
+        retries: 20
+        delay: 10
+        failed_when: false
+
+      # ---- GET CONTAINER DETAILS ----
+      - name: Get container details
+        shell: oc get pod {{ pod_name }} -n {{ namespace }} -o json
+        register: pod_json
+
+      # ---- PARSE CONTAINER STATUS ----
+      - name: Extract container status
+        set_fact:
+          container_statuses: "{{ (pod_json.stdout | from_json).status.containerStatuses }}"
+
+      # ---- CHECK READY ----
+      - name: Check all containers ready
+        set_fact:
+          all_ready: "{{ container_statuses | map(attribute='ready') | list | min }}"
+
+      # ---- FAILED CONTAINERS ----
+      - name: Get failed containers
+        set_fact:
+          failed_containers: "{{ container_statuses | selectattr('ready','equalto',false) | map(attribute='name') | list }}"
+
+      # ---- FINAL STATUS ----
+      - name: Evaluate status
+        set_fact:
+          pod_status: >-
+            {% if pod_phase.stdout == "Running" and all_ready %}
+            SUCCESS
+            {% else %}
+            FAILED
+            {% endif %}
+
+      # ---- SAVE AUDIT ----
+      - name: Save audit result
+        set_fact:
+          audit_results: "{{ audit_results + [ {
+            'component': item.name,
+            'pod': pod_name,
+            'phase': pod_phase.stdout,
+            'status': pod_status,
+            'failed_containers': failed_containers,
+            'message': (
+              'All containers healthy'
+              if pod_status == 'SUCCESS'
+              else 'Failed containers: ' + (failed_containers | join(', '))
+            )
+          } ] }}"
+
+  # ----------------------------------------
+  # GENERATE HTML REPORT
+  # ----------------------------------------
+  - name: Generate HTML report
+    template:
+      src: mstr_audit_report.html.j2
+      dest: "{{ report_path }}"
+
+  - debug:
+      msg: "Report generated at {{ report_path }}"
