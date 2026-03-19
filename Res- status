@@ -1599,3 +1599,250 @@ new one for all
 
   - debug:
       msg: "Report generated at {{ report_path }}"
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@finallly
+
+
+
+Perfect 👍 Raj — now we’ll make this **fully production-grade**:
+
+> ✅ Restart components
+> ✅ Wait for pod
+> ✅ Wait for **container readiness with timeout**
+> ✅ Do NOT fail playbook
+> ✅ Capture status + failed containers
+> ✅ Store in audit_results
+
+---
+
+# 🎯 FINAL DESIGN
+
+We will implement:
+
+✔ Retry for **pod Running**
+✔ Retry for **containers Ready (with timeout)**
+✔ Proper evaluation
+✔ Clean modular role
+
+---
+
+# 📄 ✅ 1️⃣ MAIN WAIT FILE
+
+📁 `roles/mstr_restart/tasks/wait-audit.yml`
+
+```yaml id="mainwait"
+---
+- name: Process components
+  include_tasks: process_component.yml
+  loop: "{{ restart_targets }}"
+  loop_control:
+    loop_var: item
+```
+
+---
+
+# 📄 ✅ 2️⃣ CORE LOGIC (END-TO-END)
+
+📁 `roles/mstr_restart/tasks/process_component.yml`
+
+```yaml id="corelogic"
+---
+- name: Show component
+  debug:
+    msg: "Processing {{ item.name }}"
+
+# ----------------------------------------
+# GET POD NAME
+# ----------------------------------------
+- name: Get pod name
+  shell: |
+    oc get pods -n {{ namespace }} --no-headers | grep {{ item.selector }} | grep -v Terminating | awk '{print $1}' | head -1
+  register: pod_name_out
+
+- name: Set pod_name
+  set_fact:
+    pod_name: "{{ pod_name_out.stdout }}"
+
+# ----------------------------------------
+# WAIT FOR POD RUNNING
+# ----------------------------------------
+- name: Wait until pod is Running
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.phase}'
+  register: pod_phase
+  until: pod_phase.stdout == "Running"
+  retries: 30
+  delay: 10
+  failed_when: false
+
+# ----------------------------------------
+# WAIT FOR CONTAINERS READY (IMPORTANT)
+# ----------------------------------------
+- name: Wait until containers are Ready
+  shell: |
+    oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.containerStatuses[*].ready}'
+  register: pod_ready
+  until: "'false' not in pod_ready.stdout"
+  retries: 30
+  delay: 10
+  failed_when: false
+
+# ----------------------------------------
+# GET FINAL CONTAINER STATUS
+# ----------------------------------------
+- name: Get pod json
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o json
+  register: pod_json
+
+- name: Parse container statuses
+  set_fact:
+    container_statuses: "{{ (pod_json.stdout | from_json).status.containerStatuses }}"
+
+# ----------------------------------------
+# FIND FAILED CONTAINERS
+# ----------------------------------------
+- name: Get failed containers
+  set_fact:
+    failed_containers: "{{ container_statuses | selectattr('ready','equalto',false) | map(attribute='name') | list }}"
+
+# ----------------------------------------
+# FINAL STATUS EVALUATION
+# ----------------------------------------
+- name: Evaluate final status
+  set_fact:
+    pod_status: >-
+      {% if pod_phase.stdout == "Running" and (failed_containers | length == 0) %}
+      SUCCESS
+      {% else %}
+      FAILED
+      {% endif %}
+
+# ----------------------------------------
+# WARNING MESSAGE
+# ----------------------------------------
+- name: Warn if pod not healthy
+  debug:
+    msg: >
+      WARNING: {{ pod_name }} did not reach Running/Ready state.
+      Failed containers: {{ failed_containers | join(', ') }}
+  when: pod_status == "FAILED"
+
+# ----------------------------------------
+# SAVE AUDIT RESULT
+# ----------------------------------------
+- name: Save audit result
+  set_fact:
+    audit_results: "{{ audit_results | default([]) + [ {
+      'component': item.name,
+      'pod': pod_name,
+      'phase': pod_phase.stdout,
+      'status': pod_status,
+      'failed_containers': failed_containers,
+      'message': (
+        'All containers healthy'
+        if pod_status == 'SUCCESS'
+        else 'Failed containers: ' + (failed_containers | join(', '))
+      )
+    } ] }}"
+```
+
+---
+
+# 🧠 HOW WAIT WORKS NOW
+
+### ⏱ Pod Running Wait
+
+```id="m6wq20"
+30 retries × 10 sec = 300 sec (5 min)
+```
+
+### ⏱ Container Ready Wait
+
+```id="2g9u1m"
+30 retries × 10 sec = 300 sec (5 min)
+```
+
+---
+
+# 🎯 BEHAVIOR
+
+### ✅ Case 1: All Good
+
+```
+Pod Running ✔
+Containers Ready ✔
+→ SUCCESS
+```
+
+---
+
+### ⚠️ Case 2: Container Issue
+
+```
+Pod Running ✔
+Container NOT Ready ❌
+→ FAILED
+→ Captured container name
+```
+
+---
+
+### ⚠️ Case 3: Slow Startup
+
+```
+Waits up to 5 mins
+Still not ready → FAILED
+```
+
+---
+
+# 🚀 WHY THIS IS BEST PRACTICE
+
+| Feature                    | Result               |
+| -------------------------- | -------------------- |
+| Controlled retry           | No premature failure |
+| Container-level validation | No false success     |
+| Non-blocking               | Playbook continues   |
+| Audit logging              | Full visibility      |
+
+---
+
+# 🧠 FINAL OUTPUT (IN REPORT)
+
+| Component | Status  | Failed Containers |
+| --------- | ------- | ----------------- |
+| library   | SUCCESS | None              |
+| iserver   | FAILED  | iserver           |
+
+---
+
+# 🔥 OPTIONAL (ADVANCED)
+
+### Increase wait time for iserver only
+
+```yaml id="9kz3x1"
+retries: "{{ 60 if item.name == 'iserver' else 30 }}"
+```
+
+---
+
+# 🧠 FINAL RESULT
+
+You now have:
+
+✔ Pod wait
+✔ Container wait
+✔ Timeout control
+✔ Failure capture
+✔ HTML integration ready
+
+---
+
+If you want next level:
+
+👉 Retry only failed containers
+👉 Capture CrashLoopBackOff reason
+👉 Auto-trigger alert (email/Slack)
+
+Just tell me 👍
+
