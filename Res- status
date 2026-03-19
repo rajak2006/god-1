@@ -1000,4 +1000,329 @@ If you want next level:
 👉 Build dashboard UI
 
 Just tell me 👍
+@@@@@@@@@@@@@@@@@
 
+# ----------------------------------------
+# SET POD NAME (from your selector logic)
+# ----------------------------------------
+- name: Get new pod name
+  shell: oc get pods -n {{ namespace }} --no-headers | grep {{ item.selector }} | grep -v Terminating | awk '{print $1}' | head -1
+  register: pod_name_out
+
+- name: Set pod_name
+  set_fact:
+    pod_name: "{{ pod_name_out.stdout }}"
+
+# ----------------------------------------
+# WAIT FOR RUNNING (NON-BLOCKING)
+# ----------------------------------------
+- name: Wait until pod is Running
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.phase}'
+  register: pod_phase
+  until: pod_phase.stdout == "Running"
+  retries: 20
+  delay: 15
+  failed_when: false
+
+# ----------------------------------------
+# WAIT FOR READY (NON-BLOCKING)
+# ----------------------------------------
+- name: Wait until containers are Ready
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.containerStatuses[*].ready}'
+  register: pod_ready
+  until: "'false' not in pod_ready.stdout"
+  retries: 20
+  delay: 15
+  failed_when: false
+
+# ----------------------------------------
+# EVALUATE STATUS
+# ----------------------------------------
+- name: Set pod status
+  set_fact:
+    pod_status: >-
+      {% if pod_phase.stdout == "Running" and ('false' not in pod_ready.stdout) %}
+      SUCCESS
+      {% else %}
+      FAILED
+      {% endif %}
+
+# ----------------------------------------
+# SHOW RESULT
+# ----------------------------------------
+- name: Show pod result
+  debug:
+    msg: >
+      Pod={{ pod_name }}
+      Phase={{ pod_phase.stdout }}
+      Ready={{ pod_ready.stdout }}
+      Status={{ pod_status }}
+
+# ----------------------------------------
+# ⚠️ WARNING (YOUR REQUIREMENT)
+# ----------------------------------------
+- name: Warn if pod not healthy
+  debug:
+    msg: >
+      WARNING: {{ pod_name }} did not reach Running/Ready state.
+      Please check with supporting team.
+  when: pod_status == "FAILED"
+
+=================
+OPTIONAL (Highly Recommended)
+Add audit tracking:
+- name: Save result to audit
+  set_fact:
+    audit_results: "{{ audit_results | default([]) + [ {
+      'component': item.name,
+      'pod': pod_name,
+      'status': pod_status
+    } ] }}"
+
+@@@@@@@@@@@@@@@@@@@@@@@222
+
+
+Perfect 👍 Raj — now I’ll give you a **complete end-to-end solution** that:
+
+✔ Captures pod restart results
+✔ Includes **status + warning message**
+✔ Generates **HTML audit log file**
+✔ Uses **email-safe inline CSS**
+✔ Works with your restart playbook
+
+---
+
+# 📄 ✅ 1️⃣ END-TO-END PLAYBOOK (LOG + HTML REPORT)
+
+```yaml
+- name: MicroStrategy Restart + HTML Audit Report
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    namespace: mstr-env
+    report_path: "/tmp/mstr_audit_report_{{ namespace }}.html"
+
+    restart_targets:
+      - name: library
+        selector: library
+      - name: iserver
+        selector: iserver
+
+  tasks:
+
+  # ----------------------------------------
+  # INIT AUDIT LIST
+  # ----------------------------------------
+  - name: Initialize audit list
+    set_fact:
+      audit_results: []
+
+  # ----------------------------------------
+  # LOOP COMPONENTS
+  # ----------------------------------------
+  - name: Process components
+    loop: "{{ restart_targets }}"
+    loop_control:
+      label: "{{ item.name }}"
+    block:
+
+      # ---- GET POD NAME ----
+      - name: Get pod name
+        shell: oc get pods -n {{ namespace }} --no-headers | grep {{ item.selector }} | grep -v Terminating | awk '{print $1}' | head -1
+        register: pod_name_out
+
+      - set_fact:
+          pod_name: "{{ pod_name_out.stdout }}"
+
+      # ---- WAIT PHASE ----
+      - name: Wait until Running
+        shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.phase}'
+        register: pod_phase
+        until: pod_phase.stdout == "Running"
+        retries: 20
+        delay: 10
+        failed_when: false
+
+      # ---- WAIT READY ----
+      - name: Wait until Ready
+        shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.containerStatuses[*].ready}'
+        register: pod_ready
+        until: "'false' not in pod_ready.stdout"
+        retries: 20
+        delay: 10
+        failed_when: false
+
+      # ---- SET STATUS ----
+      - name: Evaluate status
+        set_fact:
+          pod_status: >-
+            {% if pod_phase.stdout == "Running" and ('false' not in pod_ready.stdout) %}
+            SUCCESS
+            {% else %}
+            FAILED
+            {% endif %}
+
+      # ---- ADD MESSAGE ----
+      - name: Save audit result
+        set_fact:
+          audit_results: "{{ audit_results + [ {
+            'component': item.name,
+            'pod': pod_name,
+            'phase': pod_phase.stdout,
+            'ready': pod_ready.stdout,
+            'status': pod_status,
+            'message': (
+              'Pod is healthy'
+              if pod_status == 'SUCCESS'
+              else 'WARNING: Pod did not reach Running/Ready state'
+            )
+          } ] }}"
+
+  # ----------------------------------------
+  # GENERATE HTML REPORT
+  # ----------------------------------------
+  - name: Generate HTML audit report
+    template:
+      src: mstr_audit_report.html.j2
+      dest: "{{ report_path }}"
+
+  # ----------------------------------------
+  # SHOW OUTPUT
+  # ----------------------------------------
+  - debug:
+      msg: "Report generated at {{ report_path }}"
+```
+
+---
+
+# 📄 ✅ 2️⃣ JINJA TEMPLATE (HTML LOG FILE)
+
+📁 `templates/mstr_audit_report.html.j2`
+
+```html
+<!DOCTYPE html>
+<html>
+<body style="font-family: Arial; background:#f4f6f8; padding:20px;">
+
+<h2 style="text-align:center; color:#2c3e50;">
+  MicroStrategy Restart Audit Report
+</h2>
+
+<p><b>Namespace:</b> {{ namespace }}</p>
+<p><b>Generated:</b> {{ ansible_date_time.iso8601 }}</p>
+
+<table style="width:100%; border-collapse:collapse; background:white;">
+
+<tr style="background:#2c3e50; color:white;">
+  <th style="padding:10px; border:1px solid #ddd;">Component</th>
+  <th style="padding:10px; border:1px solid #ddd;">Pod</th>
+  <th style="padding:10px; border:1px solid #ddd;">Status</th>
+  <th style="padding:10px; border:1px solid #ddd;">Phase</th>
+  <th style="padding:10px; border:1px solid #ddd;">Ready</th>
+  <th style="padding:10px; border:1px solid #ddd;">Message</th>
+</tr>
+
+{% for item in audit_results %}
+<tr style="{% if item.status == 'FAILED' %}background:#ffe6e6;{% endif %}">
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {{ item.component }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {{ item.pod }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;
+    {% if item.status == 'SUCCESS' %}
+      color:green; font-weight:bold;
+    {% else %}
+      color:red; font-weight:bold;
+    {% endif %}
+  ">
+    {{ item.status }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {{ item.phase }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;">
+    {{ item.ready }}
+  </td>
+
+  <td style="padding:10px; border:1px solid #ddd;
+    {% if item.status == 'FAILED' %}
+      color:red; font-weight:bold;
+    {% endif %}
+  ">
+    {{ item.message }}
+  </td>
+
+</tr>
+{% endfor %}
+
+</table>
+
+<br>
+
+<b>Status Legend:</b><br><br>
+
+<span style="color:green; font-weight:bold;">● SUCCESS</span><br>
+<span style="color:red; font-weight:bold;">● FAILED</span>
+
+</body>
+</html>
+```
+
+---
+
+# 🧾 ✅ FINAL OUTPUT (HOW REPORT LOOKS)
+
+| Component | Pod                | Status     | Phase   | Ready      | Message                                        |
+| --------- | ------------------ | ---------- | ------- | ---------- | ---------------------------------------------- |
+| library   | mstr-env-lib-xxx   | 🟢 SUCCESS | Running | true true  | Pod is healthy                                 |
+| iserver   | mstr-env-iserver-0 | 🔴 FAILED  | Running | true false | WARNING: Pod did not reach Running/Ready state |
+
+---
+
+# 🎯 WHAT YOU NOW HAVE
+
+✔ Restart audit log
+✔ Warning messages captured
+✔ HTML report file
+✔ Email-ready (inline CSS)
+✔ Failure highlighted
+
+---
+
+# 🚀 NEXT (OPTIONAL)
+
+Add email:
+
+```yaml
+- name: Send report
+  mail:
+    subtype: html
+    body: "{{ lookup('file', report_path) }}"
+```
+
+---
+
+# 🧠 FINAL RESULT
+
+👉 Complete audit trail
+👉 Visual HTML report
+👉 No manual checking
+👉 Enterprise-ready
+
+---
+
+If you want next level:
+
+👉 Add full namespace pod report + restart audit together
+👉 Add success/failure summary
+👉 Add execution time per component
+
+Just tell me 👍
