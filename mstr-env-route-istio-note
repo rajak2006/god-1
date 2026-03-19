@@ -2,6 +2,23 @@ The default OpenShift route hostname does not match the Istio VirtualService hos
 
 OpenShift Route generates a hostname, but Istio routes traffic based on the Host header. If the hostname does not match what Istio expects in VirtualService, traffic will fail.
 
+so we used
+1️⃣ Create ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: allow-custom-route-host
+rules:
+- apiGroups: ["route.openshift.io"]
+  resources: ["routes/custom-host"]
+  verbs: ["create", "update"]
+2️⃣ Bind to user/group
+oc create clusterrolebinding allow-route-host-binding \
+  --clusterrole=allow-custom-route-host \
+  --user=<your-user>
+
+
+===================================
 User → DNS → Route → Istio Gateway → MSTR VirtualService → Pods
 Passthrough sends traffic as-is to Istio, so Istio can correctly identify and route it.
 Reencrypt breaks that by modifying the traffic before Istio sees it.
