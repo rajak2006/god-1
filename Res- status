@@ -796,4 +796,208 @@ If you want next:
 👉 Historical report storage (last 5 runs)
 
 Just tell me 👍
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+good html
+Got it 👍 Raj — you want the **Jinja2 (J2) template version** instead of inline YAML HTML.
+
+That’s the **correct enterprise approach** ✅ (clean separation of logic + UI)
+
+---
+
+# 📄 📁 1️⃣ Jinja Template File
+
+Create:
+
+```
+templates/k8s_pod_report.html.j2
+```
+
+---
+
+## ✅ J2 TEMPLATE (EMAIL SAFE – INLINE CSS)
+
+```html
+<!DOCTYPE html>
+<html>
+<body style="font-family: Arial; background:#f4f6f8; padding:20px;">
+
+<h2 style="text-align:center; color:#2c3e50;">
+  Kubernetes Audit Report
+</h2>
+
+<p><b>Namespace:</b> {{ namespace }}</p>
+<p><b>Generated:</b> {{ ansible_date_time.iso8601 }}</p>
+<p><b>Total Pods:</b> {{ pods | length }}</p>
+
+<table style="width:100%; border-collapse:collapse; background:white;">
+
+  <tr style="background:#2c3e50; color:white;">
+    <th style="padding:10px; border:1px solid #ddd;">Pod Name</th>
+    <th style="padding:10px; border:1px solid #ddd;">Status</th>
+    <th style="padding:10px; border:1px solid #ddd;">Node</th>
+    <th style="padding:10px; border:1px solid #ddd;">Restarts</th>
+    <th style="padding:10px; border:1px solid #ddd;">Age</th>
+  </tr>
+
+{% for pod in pods %}
+  <tr>
+
+    <td style="padding:10px; border:1px solid #ddd;">
+      {{ pod.name }}
+    </td>
+
+    <td style="padding:10px; border:1px solid #ddd;
+      {% if pod.status == 'Running' %}
+        color:green; font-weight:bold;
+      {% elif pod.status in ['CrashLoopBackOff','Error','Failed'] %}
+        color:red; font-weight:bold;
+      {% else %}
+        color:orange; font-weight:bold;
+      {% endif %}
+    ">
+      {{ pod.status }}
+    </td>
+
+    <td style="padding:10px; border:1px solid #ddd;">
+      {{ pod.node }}
+    </td>
+
+    <td style="padding:10px; border:1px solid #ddd;
+      {% if pod.restarts|int > 3 %}
+        background:#ffe6e6;
+      {% endif %}
+    ">
+      {{ pod.restarts }}
+    </td>
+
+    <td style="padding:10px; border:1px solid #ddd;">
+      {{ pod.age }}
+    </td>
+
+  </tr>
+{% endfor %}
+
+</table>
+
+<br>
+
+<b>Status Legend:</b><br><br>
+
+<span style="color:green; font-weight:bold;">● Running</span><br>
+<span style="color:orange; font-weight:bold;">● Pending / Starting</span><br>
+<span style="color:red; font-weight:bold;">● Failed / Error</span>
+
+</body>
+</html>
+```
+
+---
+
+# 📄 📁 2️⃣ Playbook (Use Template)
+
+```yaml
+- name: Kubernetes Pod Audit Report (Jinja Template)
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    namespace: mstr-env
+    report_path: "/tmp/k8s_pod_report_{{ namespace }}.html"
+
+    smtp_host: smtp.example.com
+    smtp_port: 25
+    email_to:
+      - raj@example.com
+    email_sender: ansible@example.com
+
+  tasks:
+
+  - name: Get pods
+    shell: oc get pods -n {{ namespace }} -o wide --no-headers
+    register: pod_list
+
+  - name: Parse pods
+    set_fact:
+      pods: "{{ pods | default([]) + [ {
+        'name': item.split()[0],
+        'status': item.split()[2],
+        'restarts': item.split()[3],
+        'age': item.split()[4],
+        'node': item.split()[6] | default('N/A')
+      } ] }}"
+    loop: "{{ pod_list.stdout_lines }}"
+
+  - name: Generate HTML report from template
+    template:
+      src: k8s_pod_report.html.j2
+      dest: "{{ report_path }}"
+
+  - name: Send email
+    mail:
+      host: "{{ smtp_host }}"
+      port: "{{ smtp_port }}"
+      subject: "K8s Pod Report - {{ namespace }}"
+      from: "{{ email_sender }}"
+      to: "{{ email_to }}"
+      subtype: html
+      body: "{{ lookup('file', report_path) }}"
+
+  - name: Show output
+    debug:
+      msg: "Report generated at {{ report_path }}"
+```
+
+---
+
+# 🎯 WHY THIS IS BEST PRACTICE
+
+| Approach               | Result                |
+| ---------------------- | --------------------- |
+| Inline HTML in YAML    | ❌ Hard to maintain    |
+| Jinja Template         | ✅ Clean & reusable    |
+| Email-safe CSS         | ✅ Works everywhere    |
+| Separation of logic/UI | ✅ Enterprise standard |
+
+---
+
+# 🚀 BONUS (OPTIONAL)
+
+### Highlight failed pods on top:
+
+```yaml
+- set_fact:
+    pods: "{{ pods | sort(attribute='status') }}"
+```
+
+---
+
+### Add summary in report:
+
+```html
+<p>
+Running: {{ pods | selectattr('status','equalto','Running') | list | length }} |
+Failed: {{ pods | selectattr('status','in',['Error','CrashLoopBackOff','Failed']) | list | length }}
+</p>
+```
+
+---
+
+# 🧠 FINAL RESULT
+
+You now have:
+
+✔ Clean Jinja template
+✔ Email-safe rendering
+✔ Fully dynamic pod report
+✔ Enterprise-ready automation
+
+---
+
+If you want next level:
+
+👉 Add CPU/memory usage
+👉 Add pod logs links
+👉 Build dashboard UI
+
+Just tell me 👍
 
