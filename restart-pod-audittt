@@ -1,3 +1,168 @@
+---
+- name: MicroStrategy Restart + Validation + HTML Report
+  hosts: localhost
+  gather_facts: yes
+
+  vars_files:
+    - vars.yml
+
+  tasks:
+
+  # =========================================
+  # INIT
+  # =========================================
+  - name: Initialize audit list
+    set_fact:
+      audit_results: []
+
+  # =========================================
+  # LOOP THROUGH COMPONENTS
+  # =========================================
+  - name: Process all components
+    block:
+
+      # -------------------------------
+      # DEBUG COMPONENT
+      # -------------------------------
+      - name: Show component
+        debug:
+          msg: "Processing {{ item.name }} ({{ item.selector }})"
+
+      # -------------------------------
+      # GET POD
+      # -------------------------------
+      - name: Get pod name
+        shell: |
+          oc get pods -n {{ namespace }} --no-headers | grep {{ item.selector }} | grep -v Terminating | awk '{print $1}' | head -1
+        register: pod_out
+        failed_when: false
+
+      - name: Set pod_name
+        set_fact:
+          pod_name: "{{ pod_out.stdout | default('not-found') }}"
+
+      # -------------------------------
+      # WAIT FOR RUNNING
+      # -------------------------------
+      - name: Wait for pod Running
+        shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.phase}'
+        register: pod_phase
+        until: pod_phase.stdout == "Running"
+        retries: 20
+        delay: 10
+        failed_when: false
+
+      # -------------------------------
+      # WAIT FOR CONTAINERS READY
+      # -------------------------------
+      - name: Wait for containers Ready
+        shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.containerStatuses[*].ready}'
+        register: pod_ready
+        until: "'false' not in pod_ready.stdout"
+        retries: 20
+        delay: 10
+        failed_when: false
+
+      # -------------------------------
+      # GET FULL POD JSON
+      # -------------------------------
+      - name: Get pod details
+        shell: oc get pod {{ pod_name }} -n {{ namespace }} -o json
+        register: pod_json
+        failed_when: false
+
+      # -------------------------------
+      # PARSE CONTAINERS
+      # -------------------------------
+      - name: Extract container status
+        set_fact:
+          container_statuses: "{{ (pod_json.stdout | default('{}') | from_json).status.containerStatuses | default([]) }}"
+
+      - name: Find failed containers
+        set_fact:
+          failed_containers: "{{ container_statuses | selectattr('ready','equalto',false) | map(attribute='name') | list }}"
+
+      # -------------------------------
+      # FINAL STATUS
+      # -------------------------------
+      - name: Set final status
+        set_fact:
+          pod_status: >-
+            {% if pod_phase.stdout == "Running" and (failed_containers | length == 0) %}
+            SUCCESS
+            {% else %}
+            FAILED
+            {% endif %}
+
+      # -------------------------------
+      # WARNING (NO FAIL)
+      # -------------------------------
+      - name: Warn if unhealthy
+        debug:
+          msg: "WARNING: {{ pod_name }} not healthy → {{ failed_containers }}"
+        when: pod_status == "FAILED"
+
+      # -------------------------------
+      # SAVE AUDIT
+      # -------------------------------
+      - name: Save audit result
+        set_fact:
+          audit_results: >-
+            {{
+              (audit_results | default([])) + [
+                {
+                  'component': item.name | default('unknown'),
+                  'pod': pod_name,
+                  'phase': pod_phase.stdout | default('unknown'),
+                  'status': pod_status,
+                  'failed_containers': failed_containers | default([]),
+                  'message': (
+                    'All containers healthy'
+                    if (pod_status | default('FAILED')) == 'SUCCESS'
+                    else 'Failed containers: ' + ((failed_containers | default([])) | join(', '))
+                  )
+                }
+              ]
+            }
+
+    loop: "{{ restart_targets }}"
+
+  # =========================================
+  # GET ALL PODS
+  # =========================================
+  - name: Get all pods JSON
+    shell: oc get pods -n {{ namespace }} -o json
+    register: all_pods
+
+  - name: Build pod list
+    set_fact:
+      pods: >-
+        {{
+          (all_pods.stdout | from_json)['items']
+          | map(attribute='metadata.name')
+          | list
+        }}
+
+  # =========================================
+  # GENERATE HTML REPORT
+  # =========================================
+  - name: Generate HTML report
+    template:
+      src: mstr_full_audit_report.html.j2
+      dest: "/tmp/mstr_report_{{ namespace }}.html"
+
+  - name: Show report path
+    debug:
+      msg: "Report generated at /tmp/mstr_report_{{ namespace }}.html"
+
+
+
+
+
+
+
+
+________
 - name: Save audit result
   set_fact:
     audit_results: >-
