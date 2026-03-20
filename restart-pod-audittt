@@ -1,3 +1,29 @@
+- name: Find matching pod safely
+  set_fact:
+    pod_name: >-
+      {{
+        (
+          (pod_json.stdout | from_json)['items']
+          | selectattr('metadata.name', 'search', item.selector)
+          | map(attribute='metadata.name')
+          | list
+        )[0] | default('')
+      }}
+
+
+
+- name: Find matching pod
+  set_fact:
+    pod_name: >-
+      {{
+        (pod_json.stdout | from_json)['items']
+        | selectattr('metadata.name', 'search', item.selector)
+        | map(attribute='metadata.name')
+        | list
+        | first
+      }}
+
+
 Perfect 👍 Raj — here is your **final, clean, production-ready END-TO-END solution**.
 
 This version is:
