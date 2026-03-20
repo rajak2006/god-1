@@ -1,3 +1,116 @@
+
+---
+# =========================================
+# PROCESS EACH COMPONENT (END-TO-END)
+# =========================================
+
+- name: 🔹 Processing component
+  debug:
+    msg: "Processing {{ item.name }} (selector={{ item.selector }})"
+
+# -----------------------------------------
+# STEP 1: WAIT FOR NEW POD (AFTER RESTART)
+# -----------------------------------------
+- name: Wait for new pod to appear
+  shell: |
+    oc get pods -n {{ namespace }} --no-headers | grep {{ item.selector }} | grep -v Terminating | awk '{print $1}' | head -1
+  register: new_pod_out
+  until: new_pod_out.stdout != ""
+  retries: 30
+  delay: 10
+  failed_when: false
+
+- name: Set pod_name
+  set_fact:
+    pod_name: "{{ new_pod_out.stdout }}"
+
+# -----------------------------------------
+# STEP 2: WAIT FOR POD RUNNING
+# -----------------------------------------
+- name: Wait until pod is Running
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.phase}'
+  register: pod_phase
+  until: pod_phase.stdout == "Running"
+  retries: 30
+  delay: 10
+  failed_when: false
+
+# -----------------------------------------
+# STEP 3: WAIT FOR CONTAINERS READY
+# -----------------------------------------
+- name: Wait until containers are Ready
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o jsonpath='{.status.containerStatuses[*].ready}'
+  register: pod_ready
+  until: "'false' not in pod_ready.stdout"
+  retries: 30
+  delay: 10
+  failed_when: false
+
+# -----------------------------------------
+# STEP 4: GET FINAL POD DETAILS (JSON)
+# -----------------------------------------
+- name: Get pod details
+  shell: oc get pod {{ pod_name }} -n {{ namespace }} -o json
+  register: pod_details
+  failed_when: false
+
+# -----------------------------------------
+# STEP 5: PARSE CONTAINER STATUS
+# -----------------------------------------
+- name: Extract container statuses
+  set_fact:
+    container_statuses: "{{ (pod_details.stdout | from_json).status.containerStatuses | default([]) }}"
+
+# -----------------------------------------
+# STEP 6: FIND FAILED CONTAINERS
+# -----------------------------------------
+- name: Identify failed containers
+  set_fact:
+    failed_containers: "{{ container_statuses | selectattr('ready','equalto',false) | map(attribute='name') | list }}"
+
+# -----------------------------------------
+# STEP 7: FINAL STATUS EVALUATION
+# -----------------------------------------
+- name: Set final pod status
+  set_fact:
+    pod_status: >-
+      {% if pod_phase.stdout == "Running" and (failed_containers | length == 0) %}
+      SUCCESS
+      {% else %}
+      FAILED
+      {% endif %}
+
+# -----------------------------------------
+# STEP 8: WARNING (DO NOT FAIL PLAYBOOK)
+# -----------------------------------------
+- name: Warn if pod not healthy
+  debug:
+    msg: >
+      WARNING: {{ pod_name }} is not healthy.
+      Failed containers: {{ failed_containers | join(', ') }}
+  when: pod_status == "FAILED"
+
+# -----------------------------------------
+# STEP 9: SAVE AUDIT RESULT
+# -----------------------------------------
+- name: Save audit result
+  set_fact:
+    audit_results: "{{ audit_results | default([]) + [ {
+      'component': item.name,
+      'pod': pod_name,
+      'phase': pod_phase.stdout,
+      'status': pod_status,
+      'failed_containers': failed_containers,
+      'message': (
+        'All containers healthy'
+        if pod_status == 'SUCCESS'
+        else 'Failed containers: ' + (failed_containers | join(', '))
+      )
+    } ] }}"
+
+
+#########
+
 - name: Find matching pod safely
   set_fact:
     pod_name: >-
