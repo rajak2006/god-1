@@ -1,4 +1,20 @@
+- name: Save audit result
+  set_fact:
+    audit_results: "{{ audit_results | default([]) + [ {
+      'component': component.name | default('unknown'),
+      'pod': pod_name | default('not-found'),
+      'phase': pod_phase.stdout | default('unknown'),
+      'status': pod_status | default('FAILED'),
+      'failed_containers': failed_containers | default([]),
+      'message': (
+        'All containers healthy'
+        if (pod_status | default('FAILED')) == 'SUCCESS'
+        else 'Failed containers: ' + ((failed_containers | default([])) | join(', '))
+      )
+    } ] }}"
 
+
+++++++
 ---
 # =========================================
 # PROCESS EACH COMPONENT (END-TO-END)
