@@ -1,6 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MicroStrategy Restart Audit Report</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f4f4;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .component {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px;
+            background: white;
+        }
+
+        .success { color: green; font-weight: bold; }
+        .failed { color: red; font-weight: bold; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        th {
+            background: #333;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>MicroStrategy OCP Restart Audit Report</h1>
+
+<!-- ================= COMPONENT SECTION ================= -->
+
+{% for comp in audit_results %}
+  {% if comp.component is defined %}
+
+  <div class="component">
+
+    <h2>{{ comp.component }}</h2>
+
+    <p>Status:
+      <span class="{{ comp.status | default('UNKNOWN') | lower }}">
+        {{ comp.status | default('UNKNOWN') }}
+      </span>
+    </p>
+
+    {% if comp.pod_details is defined and comp.pod_details | length > 0 %}
+
+    <table>
+      <tr>
+        <th>Pod Name</th>
+        <th>Phase</th>
+        <th>Age</th>
+      </tr>
+
+      {% for pod in comp.pod_details %}
+      <tr>
+        <td>{{ pod.metadata.name }}</td>
+        <td>{{ pod.status.phase }}</td>
+        <td>{{ pod.metadata.creationTimestamp }}</td>
+      </tr>
+      {% endfor %}
+
+    </table>
+
+    {% else %}
+      <p style="color:red;">No pods found</p>
+    {% endif %}
+
+  </div>
+
+  {% endif %}
+{% endfor %}
+
+<!-- ================= FULL POD INVENTORY ================= -->
+
 <h2>📦 Full Pod Inventory</h2>
 
-<div class="card">
+<div class="component">
 
 {% set ns = namespace(total_pods=0) %}
 {% for item in audit_results %}
@@ -12,16 +104,17 @@
 <h3>Total Pods: {{ ns.total_pods }}</h3>
 
 <table>
-    <tr>
-        <th>NAME</th>
-        <th>READY</th>
-        <th>STATUS</th>
-        <th>RESTARTS</th>
-        <th>AGE</th>
-    </tr>
+<tr>
+  <th>NAME</th>
+  <th>READY</th>
+  <th>STATUS</th>
+  <th>RESTARTS</th>
+  <th>AGE</th>
+</tr>
 
 {% for item in audit_results %}
   {% if item.full_inventory is defined %}
+
     {% for pod in item.full_inventory %}
 
     {% set containers = pod.status.containerStatuses | default([]) %}
@@ -29,7 +122,6 @@
     {% set ready = containers | selectattr('ready','equalto',true) | list | length %}
     {% set restarts = containers | map(attribute='restartCount') | sum %}
 
-    {# ===== REAL STATUS LOGIC ===== #}
     {% set pod_status = pod.status.phase %}
 
     {% if pod.metadata.deletionTimestamp is defined %}
@@ -45,6 +137,7 @@
     {% endif %}
 
     <tr>
+
         <td>{{ pod.metadata.name }}</td>
 
         <td>
@@ -61,28 +154,29 @@
 
         <td>
             {% if pod_status == 'Running' %}
-                <span style="color:green; font-weight:bold;">Running</span>
+                <span style="color:green;">Running</span>
 
             {% elif pod_status == 'Succeeded' %}
-                <span style="color:darkgreen; font-weight:bold;">Succeeded</span>
+                <span style="color:darkgreen;">Succeeded</span>
 
             {% elif pod_status == 'Pending' %}
-                <span style="color:orange; font-weight:bold;">Pending</span>
+                <span style="color:orange;">Pending</span>
 
             {% elif pod_status in ['CrashLoopBackOff','Error','Terminating','ImagePullBackOff'] %}
-                <span style="color:red; font-weight:bold;">{{ pod_status }}</span>
+                <span style="color:red;">{{ pod_status }}</span>
 
             {% else %}
-                <span style="color:black; font-weight:bold;">{{ pod_status }}</span>
+                {{ pod_status }}
             {% endif %}
         </td>
 
         <td>{{ restarts }}</td>
-
         <td>{{ pod.metadata.creationTimestamp }}</td>
+
     </tr>
 
     {% endfor %}
+
   {% endif %}
 {% endfor %}
 
@@ -90,7 +184,8 @@
 
 </div>
 
-
+</body>
+</html>
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 
