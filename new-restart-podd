@@ -1,4 +1,56 @@
 new klatest
+
+
+- name: Wait until pods are fully READY (strict check)
+  command: >
+    oc get pods -n {{ namespace }} -l {{ component.selector }} -o json
+  register: pod_status
+  retries: "{{ retry_count }}"
+  delay: "{{ retry_delay }}"
+  until: >
+    (
+      pod_status.stdout is defined
+      and
+      (
+        (pod_status.stdout | from_json).get('items', []) | length
+      ) > 0
+      and
+      (
+        (
+          (pod_status.stdout | from_json).get('items', [])
+          | selectattr('status.phase', 'equalto', 'Running')
+          | list | length
+        )
+        ==
+        (
+          (pod_status.stdout | from_json).get('items', [])
+          | length
+        )
+      )
+      and
+      (
+        (
+          (pod_status.stdout | from_json).get('items', [])
+          | map(attribute='status.containerStatuses')
+          | select('defined')
+          | flatten
+          | selectattr('ready', 'equalto', true)
+          | list | length
+        )
+        ==
+        (
+          (pod_status.stdout | from_json).get('items', [])
+          | map(attribute='status.containerStatuses')
+          | select('defined')
+          | flatten
+          | list | length
+        )
+      )
+    )
+  failed_when: false
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@
 Perfect — here is your **fully corrected, production-grade END-TO-END Ansible ROLE** ✅
 This version fixes:
 
