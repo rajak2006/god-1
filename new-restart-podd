@@ -1,3 +1,157 @@
+<h2>📦 Full Pod Inventory</h2>
+
+<!-- ============================= -->
+<!-- STATUS LEGEND -->
+<!-- ============================= -->
+
+<div class="card" style="margin-bottom:20px;">
+
+<h3>📘 Pod Status Legend</h3>
+
+<table>
+  <tr>
+    <th>Status</th>
+    <th>Description</th>
+  </tr>
+
+  <tr>
+    <td><span style="color:green; font-weight:bold;">Running</span></td>
+    <td>Pod is running normally</td>
+  </tr>
+
+  <tr>
+    <td><span style="color:darkgreen; font-weight:bold;">Succeeded</span></td>
+    <td>Job completed successfully</td>
+  </tr>
+
+  <tr>
+    <td><span style="color:orange; font-weight:bold;">Pending</span></td>
+    <td>Pod is being scheduled or starting</td>
+  </tr>
+
+  <tr>
+    <td><span style="color:red; font-weight:bold;">CrashLoopBackOff</span></td>
+    <td>Container repeatedly crashing</td>
+  </tr>
+
+  <tr>
+    <td><span style="color:red; font-weight:bold;">ImagePullBackOff</span></td>
+    <td>Failed to pull container image</td>
+  </tr>
+
+  <tr>
+    <td><span style="color:red; font-weight:bold;">Error</span></td>
+    <td>Container terminated with error</td>
+  </tr>
+
+  <tr>
+    <td><span style="color:red; font-weight:bold;">Terminating</span></td>
+    <td>Pod is being deleted</td>
+  </tr>
+
+</table>
+
+</div>
+
+<!-- ============================= -->
+<!-- FULL POD INVENTORY TABLE -->
+<!-- ============================= -->
+
+<div class="card">
+
+<table>
+    <tr>
+        <th>NAME</th>
+        <th>READY</th>
+        <th>STATUS</th>
+        <th>RESTARTS</th>
+        <th>AGE</th>
+    </tr>
+
+{% for item in audit_results %}
+  {% if item.full_inventory is defined %}
+
+    {% for pod in item.full_inventory %}
+
+    {% set containers = pod.status.containerStatuses | default([]) %}
+    {% set total = containers | length %}
+    {% set ready = containers | selectattr('ready','equalto',true) | list | length %}
+    {% set restarts = containers | map(attribute='restartCount') | sum %}
+
+    {# -------------------------------
+       REAL STATUS (kubectl logic)
+    -------------------------------- #}
+
+    {% set pod_status = pod.status.phase %}
+
+    {% if pod.metadata.deletionTimestamp is defined %}
+        {% set pod_status = "Terminating" %}
+    {% else %}
+        {% for c in containers %}
+            {% if c.state.waiting is defined and c.state.waiting.reason is defined %}
+                {% set pod_status = c.state.waiting.reason %}
+            {% elif c.state.terminated is defined and c.state.terminated.reason is defined %}
+                {% set pod_status = c.state.terminated.reason %}
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    <tr>
+
+        <!-- NAME -->
+        <td>{{ pod.metadata.name }}</td>
+
+        <!-- READY -->
+        <td>
+            {% if total > 0 %}
+                {% if ready == total %}
+                    <span style="color:green;">{{ ready }}/{{ total }}</span>
+                {% else %}
+                    <span style="color:red;">{{ ready }}/{{ total }}</span>
+                {% endif %}
+            {% else %}
+                0/0
+            {% endif %}
+        </td>
+
+        <!-- STATUS -->
+        <td>
+            {% if pod_status == 'Running' %}
+                <span style="color:green; font-weight:bold;">Running</span>
+
+            {% elif pod_status == 'Succeeded' %}
+                <span style="color:darkgreen; font-weight:bold;">Succeeded</span>
+
+            {% elif pod_status == 'Pending' %}
+                <span style="color:orange; font-weight:bold;">Pending</span>
+
+            {% else %}
+                <span style="color:red; font-weight:bold;">
+                    {{ pod_status }}
+                </span>
+            {% endif %}
+        </td>
+
+        <!-- RESTARTS -->
+        <td>{{ restarts }}</td>
+
+        <!-- AGE -->
+        <td>{{ pod.metadata.creationTimestamp }}</td>
+
+    </tr>
+
+    {% endfor %}
+
+  {% endif %}
+{% endfor %}
+
+</table>
+
+</div>
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
 <h2>📦 Full Pod Inventory (oc get pods accurate)</h2>
 
 <div class="card">
