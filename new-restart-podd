@@ -1,10 +1,8 @@
-<h2>📦 Full Pod Inventory (Pod-Level Status)</h2>
+<h2>📦 Full Pod Inventory (Exact oc get pods Output)</h2>
 
 <div class="card">
 
-{# =========================
-   TOTAL POD COUNT
-========================= #}
+{# TOTAL POD COUNT #}
 {% set ns = namespace(total_pods=0) %}
 {% for item in audit_results %}
   {% if item.full_inventory is defined %}
@@ -33,23 +31,28 @@
     {% set ready = containers | selectattr('ready','equalto',true) | list | length %}
     {% set restarts = containers | map(attribute='restartCount') | sum %}
 
-    {# ===============================
-       POD-LEVEL STATUS (LIKE oc)
-    =============================== #}
+    {# ======================================
+       EXACT STATUS LOGIC (kubectl-like)
+    ====================================== #}
 
     {% set pod_status = pod.status.phase %}
 
+    {# 1. Terminating #}
     {% if pod.metadata.deletionTimestamp is defined %}
         {% set pod_status = "Terminating" %}
 
-    {% elif containers | length > 0 %}
-        {% set first = containers[0] %}
+    {# 2. Check ALL containers for issues #}
+    {% else %}
+        {% for c in containers %}
 
-        {% if first.state.waiting is defined and first.state.waiting.reason is defined %}
-            {% set pod_status = first.state.waiting.reason %}
-        {% elif first.state.terminated is defined and first.state.terminated.reason is defined %}
-            {% set pod_status = first.state.terminated.reason %}
-        {% endif %}
+            {% if c.state.waiting is defined and c.state.waiting.reason is defined %}
+                {% set pod_status = c.state.waiting.reason %}
+
+            {% elif c.state.terminated is defined and c.state.terminated.reason is defined %}
+                {% set pod_status = c.state.terminated.reason %}
+            {% endif %}
+
+        {% endfor %}
     {% endif %}
 
     <tr>
@@ -70,7 +73,7 @@
             {% endif %}
         </td>
 
-        <!-- STATUS COLOR RULE -->
+        <!-- STATUS (REAL TIME) -->
         <td>
             {% if pod_status == 'Running' %}
                 <span style="color:green; font-weight:bold;">Running</span>
@@ -81,7 +84,7 @@
             {% elif pod_status == 'Pending' %}
                 <span style="color:orange; font-weight:bold;">Pending</span>
 
-            {% elif pod_status in ['Terminating', 'Error', 'CrashLoopBackOff'] %}
+            {% elif pod_status in ['CrashLoopBackOff', 'Error', 'Terminating', 'ImagePullBackOff'] %}
                 <span style="color:red; font-weight:bold;">
                     {{ pod_status }}
                 </span>
@@ -109,6 +112,8 @@
 </table>
 
 </div>
+
+
 
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
