@@ -1,3 +1,23 @@
+- name: Initialize workloads (MANDATORY)
+  set_fact:
+    workloads: []
+
+@@@22
+
+- name: Set workloads safely
+  set_fact:
+    workloads: >-
+      {{
+        (workload_json.stdout | default('{}') | from_json).items
+        if (workload_json.stdout | trim != "")
+        else []
+      }}
+
+
+@@@@@@@@@@@
+
+
+
 Yes 👍 Raj — **you are 100% correct**, and your approach is now **perfectly aligned**.
 
 👉 Since you are using:
