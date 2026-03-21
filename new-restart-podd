@@ -1,3 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Full Pod Inventory</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f8;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0px 2px 6px rgba(0,0,0,0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th {
+            background: #34495e;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .running { color: green; font-weight: bold; }
+        .succeeded { color: darkgreen; font-weight: bold; }
+        .pending { color: orange; font-weight: bold; }
+        .failed { color: red; font-weight: bold; }
+
+    </style>
+</head>
+
+<body>
+
+<h1>📦 Full Pod Inventory (oc get pods style)</h1>
+
+<div class="card">
+
+<table>
+    <tr>
+        <th>NAME</th>
+        <th>READY</th>
+        <th>STATUS</th>
+        <th>RESTARTS</th>
+        <th>AGE</th>
+    </tr>
+
+{% for item in audit_results %}
+  {% if item.full_inventory is defined %}
+
+    {% for pod in item.full_inventory %}
+
+    <!-- READY -->
+    {% set total = pod.status.containerStatuses | default([]) | length %}
+    {% set ready = pod.status.containerStatuses | default([]) | selectattr('ready','equalto',true) | list | length %}
+
+    <!-- RESTARTS -->
+    {% set restarts = pod.status.containerStatuses | default([]) | map(attribute='restartCount') | sum %}
+
+    <tr>
+
+        <!-- NAME -->
+        <td>{{ pod.metadata.name }}</td>
+
+        <!-- READY -->
+        <td>
+            {% if ready == total %}
+                <span style="color:green;">{{ ready }}/{{ total }}</span>
+            {% else %}
+                <span style="color:red;">{{ ready }}/{{ total }}</span>
+            {% endif %}
+        </td>
+
+        <!-- STATUS -->
+        <td>
+            {% if pod.status.phase == 'Running' %}
+                <span class="running">Running</span>
+
+            {% elif pod.status.phase == 'Succeeded' %}
+                <span class="succeeded">Succeeded</span>
+
+            {% elif pod.status.phase == 'Pending' %}
+                <span class="pending">Pending</span>
+
+            {% else %}
+                <span class="failed">{{ pod.status.phase }}</span>
+            {% endif %}
+        </td>
+
+        <!-- RESTARTS -->
+        <td>{{ restarts }}</td>
+
+        <!-- AGE -->
+        <td>{{ pod.metadata.creationTimestamp }}</td>
+
+    </tr>
+
+    {% endfor %}
+
+  {% endif %}
+{% endfor %}
+
+</table>
+
+</div>
+
+</body>
+</html>
+
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 <h2>📦 Full Pod Inventory (oc get pods style)</h2>
 
 <div class="card">
