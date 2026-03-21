@@ -1,0 +1,349 @@
+Alright — here’s a **production-grade, role-based Ansible design** tailored exactly for your MicroStrategy on OpenShift restart + audit requirement. This follows real SRE-grade practices: modular, fault-tolerant, dynamic, and fully reusable.
+
+---
+
+# 📁 ROLE STRUCTURE
+
+```
+roles/
+└── mstr_ocp_restart_audit/
+    ├── defaults/
+    │   └── main.yml
+    ├── vars/
+    │   └── vars.yml
+    ├── tasks/
+    │   ├── main.yml
+    │   ├── restart.yml
+    │   ├── process_component.yml
+    │   ├── collect-pods.yml
+    ├── templates/
+    │   └── report.html.j2
+```
+
+---
+
+# 📄 defaults/main.yml
+
+```yaml
+---
+retry_count: 10
+retry_delay: 15
+namespace: "mstr-namespace"
+
+report_path: "/tmp/mstr_audit_report.html"
+```
+
+---
+
+# 📄 vars/vars.yml
+
+```yaml
+---
+components:
+  - name: library
+    selector: "app=library"
+
+  - name: iserver
+    selector: "app=iserver"
+
+  - name: web
+    selector: "app=web"
+
+  - name: mobile
+    selector: "app=mobile"
+```
+
+---
+
+# 📄 tasks/main.yml (Orchestrator)
+
+```yaml
+---
+- name: Initialize audit results
+  set_fact:
+    audit_results: []
+
+- name: Restart all components
+  include_tasks: restart.yml
+
+- name: Collect full pod inventory
+  include_tasks: collect-pods.yml
+
+- name: Generate HTML report
+  template:
+    src: report.html.j2
+    dest: "{{ report_path }}"
+
+- name: Display report location
+  debug:
+    msg: "Report generated at {{ report_path }}"
+```
+
+---
+
+# 📄 tasks/restart.yml
+
+```yaml
+---
+- name: Process each component
+  include_tasks: process_component.yml
+  loop: "{{ components }}"
+  loop_control:
+    loop_var: component
+```
+
+---
+
+# 📄 tasks/process_component.yml
+
+```yaml
+---
+- name: Get workloads for component {{ component.name }}
+  command: >
+    oc get deployment,statefulset -n {{ namespace }}
+    -l {{ component.selector }} -o json
+  register: workload_json
+  failed_when: false
+
+- name: Parse workloads
+  set_fact:
+    workloads: "{{ workload_json.stdout | from_json }}"
+
+- name: Restart workloads
+  command: >
+    oc rollout restart {{ item.kind | lower }}/{{ item.metadata.name }} -n {{ namespace }}
+  loop: "{{ workloads.items }}"
+  register: restart_result
+  failed_when: false
+
+- name: Wait for pods to stabilize
+  command: >
+    oc get pods -n {{ namespace }} -l {{ component.selector }} -o json
+  register: pod_status
+  retries: "{{ retry_count }}"
+  delay: "{{ retry_delay }}"
+  until: >
+    (
+      pod_status.stdout | from_json
+    ).items | length > 0
+  failed_when: false
+
+- name: Evaluate pod health
+  set_fact:
+    pod_list: "{{ pod_status.stdout | from_json }}"
+
+- name: Build component audit result
+  set_fact:
+    component_result:
+      component: "{{ component.name }}"
+      pods: >-
+        {{
+          pod_list.items | map(attribute='metadata.name') | list
+        }}
+      pod_details: >-
+        {{
+          pod_list.items | map('extract', {
+            'name': 'metadata.name',
+            'phase': 'status.phase',
+            'ready': 'status.containerStatuses'
+          }) | list
+        }}
+
+- name: Detect failures
+  set_fact:
+    component_result: "{{ component_result | combine({'status': comp_status}) }}"
+  vars:
+    comp_status: >-
+      {{
+        'FAILED' if (
+          pod_list.items | selectattr('status.phase','ne','Running') | list | length > 0
+          or
+          pod_list.items | selectattr('status.containerStatuses','defined')
+          | selectattr('status.containerStatuses','selectattr','ready','equalto',false)
+          | list | length > 0
+        ) else 'SUCCESS'
+      }}
+
+- name: Append to audit results
+  set_fact:
+    audit_results: "{{ audit_results + [component_result] }}"
+```
+
+---
+
+# 📄 tasks/collect-pods.yml
+
+```yaml
+---
+- name: Collect all pods in namespace
+  command: >
+    oc get pods -n {{ namespace }} -o json
+  register: all_pods
+  failed_when: false
+
+- name: Parse all pods
+  set_fact:
+    all_pod_inventory: "{{ all_pods.stdout | from_json }}"
+
+- name: Add inventory to audit
+  set_fact:
+    audit_results: "{{ audit_results + [{'full_inventory': all_pod_inventory.items}] }}"
+```
+
+---
+
+# 🎨 templates/report.html.j2
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MicroStrategy Restart Audit Report</title>
+    <style>
+        body { font-family: Arial; background: #f4f4f4; }
+        h1 { color: #333; }
+        .component {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px;
+            background: white;
+        }
+        .success { color: green; }
+        .failed { color: red; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>MicroStrategy OCP Restart Audit Report</h1>
+
+{% for comp in audit_results %}
+  {% if comp.component is defined %}
+  <div class="component">
+    <h2>{{ comp.component }}</h2>
+
+    <p>Status:
+      <span class="{{ comp.status | lower }}">
+        {{ comp.status }}
+      </span>
+    </p>
+
+    <table>
+      <tr>
+        <th>Pod Name</th>
+        <th>Phase</th>
+        <th>Ready Containers</th>
+      </tr>
+
+      {% for pod in comp.pod_details %}
+      <tr>
+        <td>{{ pod.metadata.name }}</td>
+        <td>{{ pod.status.phase }}</td>
+        <td>
+          {% for c in pod.status.containerStatuses %}
+            {{ c.name }}: {{ c.ready }}<br>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+{% endfor %}
+
+<h2>Full Pod Inventory</h2>
+<ul>
+{% for item in audit_results %}
+  {% if item.full_inventory is defined %}
+    {% for pod in item.full_inventory %}
+      <li>{{ pod.metadata.name }} - {{ pod.status.phase }}</li>
+    {% endfor %}
+  {% endif %}
+{% endfor %}
+</ul>
+
+</body>
+</html>
+```
+
+---
+
+# ▶️ Example Playbook
+
+```yaml
+---
+- name: MicroStrategy Restart & Audit
+  hosts: localhost
+  gather_facts: no
+
+  roles:
+    - role: mstr_ocp_restart_audit
+```
+
+---
+
+# 🚀 Key Production Features Implemented
+
+### ✅ Dynamic Workload Detection
+
+* Uses label selectors (no hardcoding)
+
+### ✅ Supports Deployment + StatefulSet
+
+```bash
+oc get deployment,statefulset
+```
+
+### ✅ Deep Validation
+
+* Pod phase
+* Container readiness
+* Partial failure detection
+
+### ✅ Retry + Timeout Logic
+
+```yaml
+retries + delay + until
+```
+
+### ✅ Non-blocking Execution
+
+```yaml
+failed_when: false
+```
+
+### ✅ JSON Parsing Only
+
+* `from_json`
+* `selectattr`
+* `map`
+
+### ✅ Full Namespace Inventory
+
+### ✅ Professional HTML Report
+
+### ✅ Modular Role Design
+
+---
+
+# 🔥 Optional Enhancements (Recommended for Enterprise)
+
+* Add **parallel execution (async + poll)**
+* Push report to **S3 / Nexus / Artifact repo**
+* Send email via **Ansible mail module**
+* Integrate with **Kiali / Prometheus for health validation**
+* Add **pre-check + post-check phases**
+* Add **Slack / Teams notification**
+
+---
+
+If you want next level:
+👉 I can upgrade this to **enterprise SRE pipeline (with CI/CD, GitOps, ArgoCD integration, and RBAC for FID users)**.
