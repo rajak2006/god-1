@@ -5,6 +5,153 @@
     <style>
         body { font-family: Arial; background: #f4f4f4; }
         h1 { color: #333; }
+
+        .component {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px;
+            background: white;
+        }
+
+        .success { color: green; font-weight: bold; }
+        .failed { color: red; font-weight: bold; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        th {
+            background: #333;
+            color: white;
+        }
+
+        .row-failed {
+            background-color: #fdecea;
+        }
+
+    </style>
+</head>
+
+<body>
+
+<h1>MicroStrategy OCP Restart Audit Report</h1>
+
+{% for comp in audit_results %}
+  {% if comp.component is defined %}
+
+  <div class="component">
+    <h2>{{ comp.component }}</h2>
+
+    <p>Status:
+      <span class="{{ comp.status | default('UNKNOWN') | lower }}">
+        {{ comp.status | default('UNKNOWN') }}
+      </span>
+    </p>
+
+    {% if comp.pod_details is defined and comp.pod_details | length > 0 %}
+
+    <table>
+      <tr>
+        <th>Pod Name</th>
+        <th>Phase</th>
+        <th>Age</th>
+        <th>Containers</th>
+      </tr>
+
+      {% for pod in comp.pod_details %}
+
+      {% set is_failed = (pod.status.phase != 'Running') %}
+
+      <tr class="{{ 'row-failed' if is_failed else '' }}">
+        <td>{{ pod.metadata.name }}</td>
+        <td>{{ pod.status.phase }}</td>
+
+        <!-- AGE -->
+        <td>
+          {{ pod.metadata.creationTimestamp | default('N/A') }}
+        </td>
+
+        <td>
+          {% if pod.status.containerStatuses is defined %}
+            {% for c in pod.status.containerStatuses %}
+              {{ c.name }} :
+              {% if c.ready %}
+                <span class="success">Ready</span>
+              {% else %}
+                <span class="failed">Not Ready</span>
+              {% endif %}
+              <br>
+            {% endfor %}
+          {% else %}
+            No container data
+          {% endif %}
+        </td>
+      </tr>
+
+      {% endfor %}
+
+    </table>
+
+    {% else %}
+      <p style="color:red;">No pods found</p>
+    {% endif %}
+
+  </div>
+
+  {% endif %}
+{% endfor %}
+
+<!-- ============================= -->
+<!-- FULL POD INVENTORY (TABLE) -->
+<!-- ============================= -->
+
+<h2>Full Pod Inventory</h2>
+
+<table>
+  <tr>
+    <th>Pod Name</th>
+    <th>Phase</th>
+    <th>Age</th>
+  </tr>
+
+{% for item in audit_results %}
+  {% if item.full_inventory is defined %}
+
+    {% for pod in item.full_inventory %}
+
+    {% set is_failed = (pod.status.phase != 'Running') %}
+
+    <tr class="{{ 'row-failed' if is_failed else '' }}">
+      <td>{{ pod.metadata.name }}</td>
+      <td>{{ pod.status.phase }}</td>
+      <td>{{ pod.metadata.creationTimestamp | default('N/A') }}</td>
+    </tr>
+
+    {% endfor %}
+
+  {% endif %}
+{% endfor %}
+
+</table>
+
+</body>
+</html>
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MicroStrategy Restart Audit Report</title>
+    <style>
+        body { font-family: Arial; background: #f4f4f4; }
+        h1 { color: #333; }
         .component {
             border: 1px solid #ccc;
             padding: 10px;
