@@ -1,3 +1,46 @@
+- name: Wait for rollout to complete
+  command: >
+    oc rollout status {{ item.kind | lower }}/{{ item.metadata.name }}
+    -n {{ namespace }} --timeout=300s
+  loop: "{{ workloads.get('items', []) }}"
+  register: rollout_status
+
+@@@@@@@@@@@@@@@@@@@@
+
+- name: Wait until pods are stable and ready
+  command: >
+    oc get pods -n {{ namespace }} -l {{ component.selector }} -o json
+  register: pod_status_ready
+  retries: "{{ retry_count }}"
+  delay: "{{ retry_delay }}"
+  until: >
+    (
+      (pod_status_ready.stdout | from_json).items
+      | selectattr('status.phase','equalto','Running')
+      | list | length
+    )
+    ==
+    (
+      (pod_status_ready.stdout | from_json).items | length
+    )
+    and
+    (
+      (pod_status_ready.stdout | from_json).items
+      | map(attribute='status.containerStatuses')
+      | flatten
+      | selectattr('ready','equalto',true)
+      | list | length
+    )
+    ==
+    (
+      (pod_status_ready.stdout | from_json).items
+      | map(attribute='status.containerStatuses')
+      | flatten
+      | list | length
+    )
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
 
 Good — now we’re at the **real underlying issue** 👍
 If it’s **still skipping even after removing `failed_when: false`**, then the problem is:
