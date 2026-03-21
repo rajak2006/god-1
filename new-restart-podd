@@ -347,3 +347,248 @@ failed_when: false
 
 If you want next level:
 👉 I can upgrade this to **enterprise SRE pipeline (with CI/CD, GitOps, ArgoCD integration, and RBAC for FID users)**.
+
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+fixed version
+
+---
+- name: Get workloads for component {{ component.name }}
+  command: >
+    oc get deployment,statefulset -n {{ namespace }}
+    -l {{ component.selector }} -o json
+  register: workload_json
+  failed_when: false
+
+- name: Parse workloads
+  set_fact:
+    workloads: "{{ workload_json.stdout | from_json }}"
+
+- name: Restart workloads
+  command: >
+    oc rollout restart {{ item.kind | lower }}/{{ item.metadata.name }} -n {{ namespace }}
+  loop: "{{ workloads.get('items', []) }}"
+  when: workloads.get('items', []) | length > 0
+  register: restart_result
+  failed_when: false
+
+# -----------------------------
+# Wait for pods
+# -----------------------------
+- name: Wait for pods to stabilize
+  command: >
+    oc get pods -n {{ namespace }} -l {{ component.selector }} -o json
+  register: pod_status
+  retries: "{{ retry_count }}"
+  delay: "{{ retry_delay }}"
+  until: >
+    (
+      (pod_status.stdout | from_json).get('items', []) | length
+    ) > 0
+  failed_when: false
+
+- name: Parse pod list
+  set_fact:
+    pod_list: "{{ pod_status.stdout | from_json }}"
+
+# -----------------------------
+# Build audit data
+# -----------------------------
+- name: Build component audit result
+  set_fact:
+    component_result:
+      component: "{{ component.name }}"
+      pods: >-
+        {{
+          pod_list.get('items', []) | map(attribute='metadata.name') | list
+        }}
+      pod_details: "{{ pod_list.get('items', []) }}"
+
+# -----------------------------
+# Detect failures (PRODUCTION GRADE)
+# -----------------------------
+- name: Detect failures
+  set_fact:
+    component_result: "{{ component_result | combine({'status': comp_status}) }}"
+  vars:
+    comp_status: >-
+      {{
+        'FAILED' if (
+
+          # ❌ Pod not in Running state
+          (
+            pod_list.get('items', [])
+            | selectattr('status.phase', 'ne', 'Running')
+            | list | length
+          ) > 0
+
+          or
+
+          # ❌ Any container not ready (partial failure detection)
+          (
+            pod_list.get('items', [])
+            | selectattr('status.containerStatuses', 'defined')
+            | map(attribute='status.containerStatuses')
+            | flatten
+            | selectattr('ready', 'equalto', false)
+            | list | length
+          ) > 0
+
+        ) else 'SUCCESS'
+      }}
+
+# -----------------------------
+# Append to audit_results
+# -----------------------------
+- name: Append to audit results
+  set_fact:
+    audit_results: "{{ audit_results + [component_result] }}"
+
+
+3#####################
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MicroStrategy Restart Audit Report</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f8;
+            margin: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+
+        .component {
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0px 2px 6px rgba(0,0,0,0.1);
+        }
+
+        .status-success {
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .status-failed {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th {
+            background-color: #34495e;
+            color: white;
+            padding: 10px;
+        }
+
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .pod-failed {
+            background-color: #fdecea;
+        }
+
+        .container-failed {
+            color: red;
+            font-weight: bold;
+        }
+
+        .container-success {
+            color: green;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>🚀 MicroStrategy OCP Restart Audit Report</h1>
+
+{% for comp in audit_results %}
+  {% if comp.component is defined %}
+
+  <div class="component">
+    <h2>Component: {{ comp.component }}</h2>
+
+    <p>Status:
+      <span class="status-{{ comp.status | lower }}">
+        {{ comp.status }}
+      </span>
+    </p>
+
+    <table>
+      <tr>
+        <th>Pod Name</th>
+        <th>Phase</th>
+        <th>Container Status</th>
+      </tr>
+
+      {% for pod in comp.pod_details %}
+
+        {% set pod_failed = (pod.status.phase != 'Running') %}
+
+        <tr class="{{ 'pod-failed' if pod_failed else '' }}">
+          <td>{{ pod.metadata.name }}</td>
+          <td>{{ pod.status.phase }}</td>
+
+          <td>
+            {% if pod.status.containerStatuses is defined %}
+              {% for c in pod.status.containerStatuses %}
+
+                {% if not c.ready %}
+                  <span class="container-failed">
+                    ❌ {{ c.name }} (Not Ready)
+                  </span><br>
+                {% else %}
+                  <span class="container-success">
+                    ✅ {{ c.name }} (Ready)
+                  </span><br>
+                {% endif %}
+
+              {% endfor %}
+            {% else %}
+              <span class="container-failed">No container info</span>
+            {% endif %}
+          </td>
+        </tr>
+
+      {% endfor %}
+    </table>
+  </div>
+
+  {% endif %}
+{% endfor %}
+
+<hr>
+
+<h2>📦 Full Pod Inventory</h2>
+
+<ul>
+{% for item in audit_results %}
+  {% if item.full_inventory is defined %}
+    {% for pod in item.full_inventory %}
+      <li>
+        {{ pod.metadata.name }} - {{ pod.status.phase }}
+      </li>
+    {% endfor %}
+  {% endif %}
+{% endfor %}
+</ul>
+
+</body>
+</html>
