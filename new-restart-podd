@@ -1,3 +1,25 @@
+- name: Initialize pod list
+  set_fact:
+    pods: []
+
+- name: Build structured pod list
+  set_fact:
+    pods: "{{ pods + [ {
+      'name': item.metadata.name,
+      'namespace': item.metadata.namespace,
+      'phase': item.status.phase | default('Unknown'),
+      'node': item.spec.nodeName | default('N/A'),
+      'restarts': (
+        item.status.containerStatuses | default([])
+        | map(attribute='restartCount')
+        | list
+        | sum
+      )
+    } ] }}"
+  loop: "{{ (all_pods.stdout | from_json)['items'] }}"
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
 Yes 👍 Raj — you **can absolutely use this template**, and you’re already very close.
 We just need to **adapt it properly for real-time data from `oc get pods`** and add the required fields.
 
