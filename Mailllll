@@ -1,3 +1,24 @@
+
+Hi Team,
+
+We are planning to onboard the application team to start using our application. For this purpose, we require access to a Development OCP (OpenShift Container Platform) environment.
+
+Specifically, we need:
+
+* Privileged access to install our application operator
+* Permissions to create and manage namespaces within OCP
+
+Kindly provide the necessary Dev OCP environment details and access at the earliest to help us proceed with the onboarding activities.
+
+Please let us know if any additional information is required from our side.
+
+Thanks & Regards,
+[Your Name]
+
+
+#####
+
+
 Dear Platform Team,
 
 We are currently experiencing a critical issue where our application is no longer accessible via its OpenShift route.
