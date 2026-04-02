@@ -1,4 +1,22 @@
+Dear Platform Team,
 
+We are currently experiencing a critical issue where our application is no longer accessible via its OpenShift route.
+
+Upon investigation, we have identified that the root cause appears to be at the platform level. Specifically, the ingress operator is in a degraded state with only partial router availability. In addition, the machine-config pool is also degraded, which is impacting node readiness.
+
+This degradation is affecting the routing layer and preventing requests from reaching the backend services, resulting in consistent 503 errors.
+
+We kindly request you to prioritize resolving the ingress and machine-config operator issues. Once these cluster components are restored to a healthy state, we expect route-based access to function normally again.
+
+Please let us know if you require any additional logs or further details—we would be happy to assist.
+
+Thank you for your support in restoring cluster stability.
+
+Best regards,
+[Your Name]
+
+
+#####
 Dear Platform Team,
 We’re experiencing a critical issue where our application is no longer accessible via its OpenShift route. Upon investigating, we’ve identified that the root cause is at the platform level. Specifically, the ingress operator is degraded, with only partial router availability. Additionally, the machine-config pool is degraded, impacting node readiness.
 This degradation is affecting the routing layer and preventing requests from reaching the backend services. As a result, we are consistently encountering 503 errors.
