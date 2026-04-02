@@ -1,4 +1,12 @@
 
+Dear Platform Team,
+We’re experiencing a critical issue where our application is no longer accessible via its OpenShift route. Upon investigating, we’ve identified that the root cause is at the platform level. Specifically, the ingress operator is degraded, with only partial router availability. Additionally, the machine-config pool is degraded, impacting node readiness.
+This degradation is affecting the routing layer and preventing requests from reaching the backend services. As a result, we are consistently encountering 503 errors.
+Could you please prioritize resolving the ingress and machine-config operator issues? Once these cluster components are restored to a healthy state, we expect route-based access to be functional again.
+If you require further logs or specifics, I’m happy to provide them. Your assistance in restoring the cluster’s stability is appreciated.
+Best regards,
+
+
 The Service Mesh control plane (SMCP) in istio-system is stuck in “Pausing Install”.
 
 istiod-basic pod is running but 0/1 ready
