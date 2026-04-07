@@ -1,3 +1,151 @@
+Alright—let’s fix this properly and give you a **clean, working script**.
+
+I’ll give you **two versions** depending on your setup:
+
+---
+
+# ✅ **Option 1: Simple download (Public S3 file)**
+
+Use this if your file is **publicly accessible**.
+
+```bash
+#!/bin/bash
+
+bucket="$1"
+file="$2"
+filename="$3"
+
+endpoint="s3.example.com"
+logdir="/tmp"
+
+if [ -z "$bucket" ] || [ -z "$file" ] || [ -z "$filename" ]; then
+  echo "Usage: $0 <bucket> <file> <output_filename>"
+  exit 1
+fi
+
+url="https://${bucket}.${endpoint}/${file}"
+
+echo "Downloading from: $url"
+
+set -x
+curl -f -o "${logdir}/${filename}" "$url"
+set +x
+
+echo "Saved to: ${logdir}/${filename}"
+```
+
+---
+
+### 👉 Run it like:
+
+```bash
+./s3_download.sh mstrs3service textfile.txt log1.txt
+```
+
+---
+
+# 🔐 **Option 2: Private S3 (Signed request – FIXED version of your script)**
+
+Your original script tried to do signing but had multiple errors. Here’s the **correct version (AWS Signature V2 style)**:
+
+```bash
+#!/bin/bash
+
+bucket="$1"
+file="$2"
+filename="$3"
+
+endpoint="s3.example.com"
+access_key="YOUR_ACCESS_KEY"
+secret_key="YOUR_SECRET_KEY"
+
+logdir="/tmp"
+contentType="application/octet-stream"
+
+if [ -z "$bucket" ] || [ -z "$file" ] || [ -z "$filename" ]; then
+  echo "Usage: $0 <bucket> <file> <output_filename>"
+  exit 1
+fi
+
+dateValue=$(date -R)
+resource="/${bucket}/${file}"
+
+stringToSign="GET\n\n${contentType}\n${dateValue}\n${resource}"
+
+signature=$(echo -en "$stringToSign" | openssl sha1 -hmac "$secret_key" -binary | base64)
+
+authHeader="Authorization: AWS ${access_key}:${signature}"
+
+url="https://${bucket}.${endpoint}/${file}"
+
+echo "Downloading from: $url"
+
+set -x
+curl -f -o "${logdir}/${filename}" \
+  -H "Date: ${dateValue}" \
+  -H "Content-Type: ${contentType}" \
+  -H "${authHeader}" \
+  "$url"
+set +x
+
+echo "Saved to: ${logdir}/${filename}"
+```
+
+---
+
+# 🚨 Important Notes
+
+### 1. Replace credentials
+
+```bash
+access_key="YOUR_ACCESS_KEY"
+secret_key="YOUR_SECRET_KEY"
+```
+
+---
+
+### 2. If you're using AWS S3 (not custom endpoint)
+
+Better use:
+
+```bash
+endpoint="s3.amazonaws.com"
+```
+
+---
+
+### 3. Easier alternative (recommended 👍)
+
+If you have AWS CLI installed:
+
+```bash
+aws s3 cp s3://mstrs3service/textfile.txt /tmp/log1.txt
+```
+
+Much simpler and safer.
+
+---
+
+# ✅ What was fixed from your script
+
+* ✔ Correct URL (`/.../file`)
+* ✔ Proper variable syntax
+* ✔ Fixed signature generation
+* ✔ Correct curl usage
+* ✔ Fixed headers
+* ✔ Clean argument handling
+
+---
+
+If you tell me:
+
+* whether this is **AWS S3 or custom S3-compatible service (MinIO, Ceph, etc.)**
+
+I can tailor it perfectly (some endpoints require slightly different signing).
+
+
+*****
+
 Perfect 👍 Raj — now we’ll convert your working logic into a clean, stable Ansible ROLE (enterprise format).
 
 👉 This version:
