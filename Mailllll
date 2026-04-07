@@ -1,4 +1,25 @@
+Dear [Recipient's Name],
 
+I hope you are doing well.
+
+Following our earlier email about the application not being accessible due to issues with the ingress and machine-config operators, I would like to highlight a continued concern.
+
+We are facing frequent issues during maintenance activities on the lab server. This is affecting our POC work and delaying our testing and application release timelines.
+
+As mentioned earlier, we previously faced a major issue where the OCP cluster became unstable and had to be rebuilt from scratch. At present, we are again blocked due to the recent OCP upgrade maintenance activity, and we are unable to proceed further.
+
+We kindly request your support to prioritize fixing these issues and to ensure better stability during future maintenance activities. It would also help if steps can be taken to avoid such issues going forward.
+
+Your support will help us stay on track and complete our work on time.
+
+Thank you for your understanding.
+
+Best regards,
+[Your Name]
+
+
+
+++++++++++++++++++++++++++++++
 Hi Team,
 
 We are planning to onboard the application team to start using our application. For this purpose, we require access to a Development OCP (OpenShift Container Platform) environment.
