@@ -1,4 +1,46 @@
+Hi Team,
 
+We are currently operating MicroStrategy (version 25.10) on Kubernetes/OpenShift using the MicroStrategy Operator-based deployment model in a production environment.
+
+As part of our platform engineering and DevOps practices, we have a requirement to manage and deploy custom plugins specifically for the Web (bi-web) component. While evaluating multiple approaches, we observed certain limitations in the current operator design that restrict flexible customization.
+
+**Current Limitations Observed:**
+
+* The operator enforces a unified image registry model and does not support per-component image overrides (e.g., customizing only the Web component image).
+* There is no support for injecting additional volumes or volume mounts (e.g., PersistentVolumeClaims for plugin storage).
+* Init containers or sidecar containers cannot be defined via the Custom Resource (CR), limiting dynamic plugin injection mechanisms.
+
+**Enhancement Request:**
+
+We kindly request consideration for the following enhancements in future releases of the MicroStrategy Operator:
+
+1. Support for per-component image override (e.g., web, iserver, library independently).
+2. Ability to define additional volumes and volume mounts via CR specification.
+3. Support for initContainers and/or sidecar containers for extensibility.
+4. Optional configuration hooks for post-deployment customization.
+
+**Business Justification:**
+
+* Enables enterprise-grade DevOps workflows and CI/CD integration.
+* Aligns with standard Kubernetes operator design patterns.
+* Reduces operational overhead for plugin lifecycle management.
+* Improves flexibility while maintaining operator-driven deployment consistency.
+
+Currently, we are using a workaround by replacing images in the registry while maintaining the same tag, but this approach has limitations in traceability and version control.
+
+We would appreciate your guidance on:
+
+* Whether such enhancements are planned in the product roadmap.
+* Recommended best practices for handling plugin lifecycle in operator-managed environments.
+
+Please let us know if additional technical details or use-case documentation are required.
+
+Thanks & Regards,
+Raj
+
+
+
+=======================
 Based on our previous discussion about multiple approaches to upload custom plugins into the bi-web component of a MicroStrategy (MSTR) Kubernetes/OpenShift environment, summarize everything in clear bullet points.
 
 Requirements:
