@@ -1,3 +1,48 @@
+
+Based on our previous discussion about multiple approaches to upload custom plugins into the bi-web component of a MicroStrategy (MSTR) Kubernetes/OpenShift environment, summarize everything in clear bullet points.
+
+Requirements:
+
+1. List All Approaches Discussed:
+
+* Include all possible methods we evaluated for deploying plugins (e.g., direct pod copy, persistent volumes, init containers, sidecars, ConfigMaps, custom images, etc.).
+
+2. For Each Approach:
+
+* Provide a short explanation
+* Why we considered it
+* Why we decided NOT to proceed (limitations, risks, operational challenges, non-scalability, etc.)
+
+3. Custom Image Approach:
+
+* Clearly explain why we are choosing the custom image approach
+* Include benefits such as:
+
+  * consistency
+  * version control
+  * repeatability
+  * compatibility with CI/CD pipelines
+
+4. Operator Constraint:
+
+* Explain how this approach aligns or conflicts with MicroStrategy Operator best practices
+* Highlight that using a custom image may break or bypass operator recommendations
+* Provide reasoning why we are still proceeding despite this limitation (if applicable)
+
+5. Final Recommendation:
+
+* Provide a clear conclusion on the selected approach
+* Include justification from a DevOps/Kubernetes best practice perspective
+
+Output Format:
+
+* Strictly bullet points
+* Clear, concise, and technical
+* No long paragraphs
+* Suitable for sharing in design discussion or architecture review
+
+
++++++++++++++++++++++++++++
 Perfect 👍 — here is your **complete end-to-end Ansible role (production-ready YAML)** with:
 
 ✔ Dynamic plugins (new + rollback)
