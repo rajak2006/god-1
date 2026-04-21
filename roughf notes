@@ -1,0 +1,118 @@
+Alright—since you’re using Red Hat OpenShift (OCP), the logic is the same as Kubernetes, but you’ll use `oc` instead of `kubectl`.
+
+I’ll give you a clean **namespace-based audit script for OCP**.
+
+---
+
+# 🛠️ OpenShift (OCP) Namespace Audit Script
+
+```bash id="ocp-ns-audit"
+#!/bin/bash
+
+NAMESPACE=$1
+
+if [ -z "$NAMESPACE" ]; then
+  echo "Usage: $0 <namespace>"
+  exit 1
+fi
+
+echo "===== POD RESOURCE USAGE (Namespace: $NAMESPACE) ====="
+oc get pods -n $NAMESPACE -o json | jq -r '
+.items[] |
+select(.status.phase=="Running") |
+[
+  .metadata.name,
+  .spec.nodeName,
+  (.spec.containers[]?.resources.requests.cpu // "0"),
+  (.spec.containers[]?.resources.requests.memory // "0"),
+  (.spec.containers[]?.resources.limits.cpu // "0"),
+  (.spec.containers[]?.resources.limits.memory // "0")
+] | @tsv' | column -t
+
+echo ""
+echo "===== DEPLOYMENTS ====="
+oc get deploy -n $NAMESPACE -o json | jq -r '
+.items[] |
+[
+  .metadata.name,
+  .spec.replicas,
+  (.spec.template.spec.containers[]?.resources.requests.cpu // "0"),
+  (.spec.template.spec.containers[]?.resources.requests.memory // "0"),
+  (.spec.template.spec.containers[]?.resources.limits.cpu // "0"),
+  (.spec.template.spec.containers[]?.resources.limits.memory // "0")
+] | @tsv' | column -t
+
+echo ""
+echo "===== STATEFULSETS ====="
+oc get statefulset -n $NAMESPACE -o json | jq -r '
+.items[] |
+[
+  .metadata.name,
+  .spec.replicas,
+  (.spec.template.spec.containers[]?.resources.requests.cpu // "0"),
+  (.spec.template.spec.containers[]?.resources.requests.memory // "0"),
+  (.spec.template.spec.containers[]?.resources.limits.cpu // "0"),
+  (.spec.template.spec.containers[]?.resources.limits.memory // "0")
+] | @tsv' | column -t
+
+echo ""
+echo "===== STORAGE (PVCs) ====="
+oc get pvc -n $NAMESPACE -o json | jq -r '
+.items[] |
+[
+  .metadata.name,
+  .spec.resources.requests.storage,
+  .spec.storageClassName,
+  .spec.volumeName
+] | @tsv' | column -t
+```
+
+---
+
+# ▶️ How to run
+
+```bash id="run-ocp"
+chmod +x ocp-audit.sh
+./ocp-audit.sh your-namespace
+```
+
+---
+
+# 🔎 Optional (very useful in OCP)
+
+### 1. Actual usage (not just requests/limits)
+
+```bash id="oc-top"
+oc adm top pods -n your-namespace
+```
+
+---
+
+### 2. Include persistent volume details
+
+```bash id="pv-details"
+oc get pv | grep your-namespace
+```
+
+---
+
+### 3. Check quotas (important in OpenShift)
+
+```bash id="quota"
+oc get resourcequota -n your-namespace
+```
+
+---
+
+# 💡 Practical tip
+
+OpenShift often enforces:
+
+* **ResourceQuotas**
+* **LimitRanges**
+
+So even if a pod doesn’t define resources, defaults may still apply. If you want, I can extend the script to include those too.
+
+---
+
+If you need a **single report (pods + deployments + storage + quotas + usage in one CSV/HTML file)**, I can build that next.
