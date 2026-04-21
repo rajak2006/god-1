@@ -1,4 +1,64 @@
+#!/bin/bash
 
+# ===== Input =====
+read -p "Enter DB Type: " DB_TYPE
+read -p "Enter DSN Name: " DSN_NAME
+read -p "Enter Username: " USERNAME
+read -s -p "Enter Password: " PASSWORD
+echo ""
+
+# ===== Paths =====
+RESPONSE_FILE="/opt/mstrbkc/mstrbak/response.json"
+BACKUP_CMD="/opt/mstrbkc/Mstrbak-client/mstrbak"
+LOG_FILE="/opt/mstrbkc/mstrbak/backup_$(date +%F_%H-%M-%S).log"
+
+# ===== Create JSON =====
+cat > "$RESPONSE_FILE" <<EOF
+{
+  "metadata": {
+    "db type": "$DB_TYPE",
+    "dsn_name": "$DSN_NAME",
+    "username": "$USERNAME",
+    "password": "$PASSWORD",
+    "prefix": ""
+  },
+  "mstr": {
+    "install_path": "/opt/",
+    "server_definition": "vmserver.example.com",
+    "project_source_name": "MSTRJan",
+    "username": "Administrator",
+    "password": "$PASSWORD"
+  },
+  "backup_options": {
+    "metadata": true,
+    "keep_same_projects_loaded": true
+  },
+  "mstrbak": {
+    "backup_path": "/opt/mstrbkc/mstrbak",
+    "response_file_path": "/opt/mstrbkc/mstrbak/response.json"
+  }
+}
+EOF
+
+echo "✅ response.json created"
+
+# ===== Run backup =====
+$BACKUP_CMD -r "$RESPONSE_FILE" > "$LOG_FILE" 2>&1
+
+# ===== Check result =====
+if grep -q "finished successfully" "$LOG_FILE"; then
+    echo "✅ Backup successful"
+
+    BACKUP_PATH=$(grep -i "archive created locally at" "$LOG_FILE" | awk -F'at: ' '{print $2}')
+
+    echo "📦 Backup Location: ${BACKUP_PATH:-Not Found}"
+    echo "📄 Log File: $LOG_FILE"
+else
+    echo "❌ Backup failed. Check log: $LOG_FILE"
+    exit 1
+fi
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 Perfect — let’s build a **production-grade Ansible solution** for your MSTR backup 🚀
 This will include:
 
