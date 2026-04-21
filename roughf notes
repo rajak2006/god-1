@@ -1,3 +1,71 @@
+#!/bin/bash
+
+NAMESPACE=$1
+
+if [ -z "$NAMESPACE" ]; then
+  echo "Usage: $0 <namespace>"
+  exit 1
+fi
+
+echo "===== POD RESOURCE REPORT (Namespace: $NAMESPACE) ====="
+
+echo -e "POD\tNODE\tCPU_REQ\tMEM_REQ\tCPU_LIM\tMEM_LIM"
+
+oc get pods -n $NAMESPACE -o json | jq -r '
+.items[] |
+select(.status.phase=="Running") |
+[
+  .metadata.name,
+  .spec.nodeName,
+  (.spec.containers[]?.resources.requests.cpu // "0"),
+  (.spec.containers[]?.resources.requests.memory // "0"),
+  (.spec.containers[]?.resources.limits.cpu // "0"),
+  (.spec.containers[]?.resources.limits.memory // "0")
+] | @tsv' | column -t
+
+# ---- GRAND TOTAL CALCULATION ----
+
+TOTAL_CPU_REQ=0
+TOTAL_MEM_REQ=0
+TOTAL_CPU_LIM=0
+TOTAL_MEM_LIM=0
+
+while read cpu_req mem_req cpu_lim mem_lim; do
+  # Convert CPU (m → cores)
+  cpu_req_val=$(echo $cpu_req | sed 's/m$//')
+  cpu_lim_val=$(echo $cpu_lim | sed 's/m$//')
+
+  # Convert memory (Mi → Mi)
+  mem_req_val=$(echo $mem_req | sed 's/Mi$//')
+  mem_lim_val=$(echo $mem_lim | sed 's/Mi$//')
+
+  TOTAL_CPU_REQ=$((TOTAL_CPU_REQ + ${cpu_req_val:-0}))
+  TOTAL_MEM_REQ=$((TOTAL_MEM_REQ + ${mem_req_val:-0}))
+  TOTAL_CPU_LIM=$((TOTAL_CPU_LIM + ${cpu_lim_val:-0}))
+  TOTAL_MEM_LIM=$((TOTAL_MEM_LIM + ${mem_lim_val:-0}))
+
+done < <(
+  oc get pods -n $NAMESPACE -o json | jq -r '
+  .items[] |
+  select(.status.phase=="Running") |
+  .spec.containers[]? |
+  [
+    (.resources.requests.cpu // "0"),
+    (.resources.requests.memory // "0"),
+    (.resources.limits.cpu // "0"),
+    (.resources.limits.memory // "0")
+  ] | @tsv'
+)
+
+echo ""
+echo "===== GRAND TOTAL ====="
+echo "Total CPU Requests: ${TOTAL_CPU_REQ}m"
+echo "Total Memory Requests: ${TOTAL_MEM_REQ}Mi"
+echo "Total CPU Limits: ${TOTAL_CPU_LIM}m"
+echo "Total Memory Limits: ${TOTAL_MEM_LIM}Mi"
+
+#######################
+
 Alright—since you’re using Red Hat OpenShift (OCP), the logic is the same as Kubernetes, but you’ll use `oc` instead of `kubectl`.
 
 I’ll give you a clean **namespace-based audit script for OCP**.
