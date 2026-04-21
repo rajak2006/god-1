@@ -57,7 +57,30 @@ else
     echo "❌ Backup failed. Check log: $LOG_FILE"
     exit 1
 fi
+=========================================
 
+echo "🚀 Running backup..."
+
+if ! $BACKUP_CMD -r "$RESPONSE_FILE" > "$LOG_FILE" 2>&1; then
+    echo "❌ Backup command execution failed"
+    echo "📄 Log: $LOG_FILE"
+    exit 1
+fi
+
+if grep -q "finished successfully" "$LOG_FILE"; then
+    echo "✅ Backup successful"
+
+    BACKUP_PATH=$(grep -i "archive created locally at" "$LOG_FILE" | awk -F'at: ' '{print $2}')
+
+    echo "📦 Backup Location: ${BACKUP_PATH:-Not Found}"
+    echo "📄 Log File: $LOG_FILE"
+else
+    echo "❌ Backup failed"
+    echo "📄 Log File: $LOG_FILE"
+    echo "------ LOG OUTPUT ------"
+    tail -20 "$LOG_FILE"
+    exit 1
+fi
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 Perfect — let’s build a **production-grade Ansible solution** for your MSTR backup 🚀
 This will include:
