@@ -1,3 +1,30 @@
+Subject: Follow-up: Request for Development OCP Access for Strategy PoC Onboarding
+Hi [Recipient Name],
+I would like to follow up on my earlier request regarding access to the Development OpenShift (OCP) environment. We are looking to onboard the application to GDTC as part of the upcoming Proof of Concept (PoC) activities.
+To provide some context, we are currently working on a migration for a product named Strategy, and we have been using the MLAB 02 and MLAB 03 servers for our engineering efforts.
+We have now reached the stage where the application needs to participate in the PoC. For this, we require access to Dev OpenShift clusters to support the PoC work, enable proper tracking, and complete application onboarding. We are planning to begin onboarding from May 15, and having the required access in place will help ensure a smooth start.
+Requirements:
+
+
+Operator installation support:
+Strategy requires an operator to be installed on the cluster. The vendor is currently working on publishing the operator to the Red Hat Catalog (ETA Q3). In the meantime, we are using a Helm-based installation on our MLAB clusters, and we would like to follow the same approach for Dev onboarding.
+
+
+Cluster-admin access:
+Required to install the operator, deploy CRDs, create projects/namespaces, configure service mesh membership, and set up monitoring.
+
+
+Additionally, could you please share the Dev environment details and assist with granting the required access?
+If you are not the right point of contact for this request, we would appreciate it if you could direct us to the appropriate team.
+Please let me know if any additional information is required from our side.
+Thank you for your support.
+Best regards,
+[Your Name]
+
+If you want, I can also make it shorter, more assertive (for escalation), or more formal for a senior leadership audience.
+
+№#₹####
+
 I hope you are doing well.
 
 I would like to follow up on my earlier request regarding access to the Development OCP environment. We are planning to begin onboarding the application team from May 15, and having the required access in place will help ensure a smooth start.
