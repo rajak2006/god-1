@@ -1,0 +1,19 @@
+#!/bin/bash
+
+NAMESPACE="matr-operator"
+
+# Get nodes
+NODES=$(oc get pods -n $NAMESPACE -o wide | grep -i matr-web-layer | awk '{print $7}' | sort -u)
+
+# Get NodePort
+NODEPORT=$(oc get svc -n $NAMESPACE matr-web-layer-external -o jsonpath='{.spec.ports[0].nodePort}')
+
+# Get API Key
+API_KEY=$(oc get secret -n $NAMESPACE matr-api-layer-secret -o jsonpath='{.data.apiKeys}' | base64 -d)
+
+# Output
+for NODE in $NODES; do
+  echo "Web ui: https://$NODE:$NODEPORT"
+done
+
+echo "Api key: $API_KEY"
