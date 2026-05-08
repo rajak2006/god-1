@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+
+# ============================================================
+# OpenShift Namespace Resource Cleanup Script
+# ============================================================
+# Purpose:
+#   Cleanup application resources inside a namespace safely
+#
+# Resources Covered:
+#   - Pods
+#   - Deployments
+#   - StatefulSets
+#   - Services
+#   - ConfigMaps
+#   - Secrets
+#   - Routes
+#   - PVCs
+#   - Jobs
+#   - CronJobs
+#   - DaemonSets
+#   - ReplicaSets
+#
+# Features:
+#   - Prompts for namespace
+#   - Validates namespace existence
+#   - Shows resources before deletion
+#   - Confirmation prompt
+#   - Safe exclusions for default secrets/serviceaccounts
+#   - Production-ready logging
+#
+# Usage:
+#   chmod +x cleanup_namespace.sh
+#   ./cleanup_namespace.sh
+# ============================================================
+
+set -euo pipefail
+
+# -------------------------------
+# Prompt for namespace
+# -------------------------------
+read -rp "Enter Namespace Name: " NAMESPACE
+
+if [[ -z "${NAMESPACE}" ]]; then
+  echo "ERROR: Namespace cannot be empty"
+  exit 1
+fi
+
+# -------------------------------
+# Validate namespace exists
+# -------------------------------
+if ! oc get namespace "${NAMESPACE}" >/dev/null 2>&1; then
+  echo "ERROR: Namespace '${NAMESPACE}' does not exist"
+  exit 1
+fi
+
+echo ""
+echo "=================================================="
+echo " Namespace Cleanup Utility"
+echo "=================================================="
+echo " Target Namespace : ${NAMESPACE}"
+echo ""
+
+# -------------------------------
+# Show existing resources
+# -------------------------------
+echo "Existing Resources:"
+echo "--------------------------------------------------"
+
+oc get all -n "${NAMESPACE}" || true
+
+echo ""
+echo "ConfigMaps:"
+oc get cm -n "${NAMESPACE}" || true
+
+echo ""
+echo "Secrets:"
+oc get secret -n "${NAMESPACE}" || true
+
+echo ""
+echo "PVCs:"
+oc get pvc -n "${NAMESPACE}" || true
+
+echo ""
+echo "Routes:"
+oc get route -n "${NAMESPACE}" || true
+
+echo ""
+echo "=================================================="
+
+# -------------------------------
+# Confirmation
+# -------------------------------
+read -rp "Do you want to cleanup all application resources in namespace '${NAMESPACE}'? (yes/no): " CONFIRM
+
+if [[ "${CONFIRM}" != "yes" ]]; then
+  echo "Cleanup aborted."
+  exit 0
+fi
+
+echo ""
+echo "Starting cleanup..."
+echo ""
+
+# ============================================================
+# Delete Workloads
+# ============================================================
+
+echo "Deleting Deployments..."
+oc delete deployment --all -n "${NAMESPACE}" --ignore-not-found=true
+
+echo "Deleting StatefulSets..."
+oc delete statefulset --all -n "${NAMESPACE}" --ignore-not-found=true
+
+echo "Deleting DaemonSets..."
+oc delete daemonset --all -n "${NAMESPACE}" --ignore-not-found=true
+
+echo "Deleting ReplicaSets..."
+oc delete replicaset --all -n "${NAMESPACE}" --ignore-not-found=true
+
+echo "Deleting Jobs..."
+oc delete jobs --all -n "${NAMESPACE}" --ignore-not-found=true
+
+echo "Deleting CronJobs..."
+oc delete cronjobs --all -n "${NAMESPACE}" --ignore-not-found=true
+
+# ============================================================
+# Delete Pods
+# ============================================================
+
+echo "Deleting Pods..."
+oc delete pod --all -n "${NAMESPACE}" --ignore-not-found=true --force --grace-period=0
+
+# ============================================================
+# Delete Networking
+# ============================================================
+
+echo "Deleting Services..."
+oc delete svc --all -n "${NAMESPACE}" --ignore-not-found=true
+
+echo "Deleting Routes..."
+oc delete route --all -n "${NAMESPACE}" --ignore-not-found=true
+
+echo "Deleting Ingress..."
+oc delete ingress --all -n "${NAMESPACE}" --ignore-not-found=true
+
+# ============================================================
+# Delete ConfigMaps
+# ============================================================
+
+echo "Deleting ConfigMaps..."
+oc delete cm --all -n "${NAMESPACE}" --ignore-not-found=true
+
+# ============================================================
+# Delete Secrets
+# Skip default/service account tokens
+# ============================================================
+
+echo "Deleting Custom Secrets..."
+
+CUSTOM_SECRETS=$(oc get secret -n "${NAMESPACE}" \
+  --no-headers \
+  | awk '!/default-token|builder-token|deployer-token|dockercfg|service-account-token/ {print $1}')
+
+if [[ -n "${CUSTOM_SECRETS}" ]]; then
+  echo "${CUSTOM_SECRETS}" | xargs -r oc delete secret -n "${NAMESPACE}"
+else
+  echo "No custom secrets found."
+fi
+
+# ============================================================
+# Delete PVCs
+# ============================================================
+
+echo "Deleting PVCs..."
+oc delete pvc --all -n "${NAMESPACE}" --ignore-not-found=true
+
+# ============================================================
+# Cleanup Complete
+# ============================================================
+
+echo ""
+echo "=================================================="
+echo " Cleanup Completed Successfully"
+echo " Namespace : ${NAMESPACE}"
+echo "=================================================="
+
+echo ""
+echo "Remaining Resources:"
+echo "--------------------------------------------------"
+
+oc get all -n "${NAMESPACE}" || true
+
+echo ""
+echo "Script execution completed."
