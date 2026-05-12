@@ -1,15 +1,18 @@
 Dear Team,
 
-We were able to restore the MSTR backup successfully using the CURL utility, and the MSTR environment is now up and running without any issues.
+We were able to restore the MSTR backup successfully using the CURL utility, and the MSTR environment is now up and running fine.
 
-However, during the deployment process, we had to remove the `LimitRange` and `ResourceQuota` configurations from the namespace in order to create the environment successfully. As creating resources without proper `LimitRange` and `ResourceQuota` settings is not recommended, we request your support in sharing the standard `LimitRange` and `ResourceQuota` specifications required for each MSTR environment.
+However, we observed that deployment fails when using our current `LimitRange` and `ResourceQuota` configurations in the namespace, resulting in the attached error. The deployment succeeds only after removing the existing `LimitRange` and `ResourceQuota` settings.
 
-Once we receive the recommended configurations, we will update them from our OCP side and proceed accordingly.
+As deploying resources without proper `LimitRange` and `ResourceQuota` configurations is not advisable, we request you to share the recommended standard configuration values required for each MSTR environment.
 
-Kindly provide the required details and support on this at the earliest.
+Once we receive the details, we will update the configurations from our OCP side and proceed with the deployment accordingly.
+
+Kindly review the attached error and provide your support on this.
 
 Best Regards,
 [Your Name]
+
 
 
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@
