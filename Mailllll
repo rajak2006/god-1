@@ -1,3 +1,18 @@
+Dear Team,
+
+We were able to restore the MSTR backup successfully using the CURL utility, and the MSTR environment is now up and running without any issues.
+
+However, during the deployment process, we had to remove the `LimitRange` and `ResourceQuota` configurations from the namespace in order to create the environment successfully. As creating resources without proper `LimitRange` and `ResourceQuota` settings is not recommended, we request your support in sharing the standard `LimitRange` and `ResourceQuota` specifications required for each MSTR environment.
+
+Once we receive the recommended configurations, we will update them from our OCP side and proceed accordingly.
+
+Kindly provide the required details and support on this at the earliest.
+
+Best Regards,
+[Your Name]
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 We are yet to onboard the Strategy application into the DEV OCP environment and are planning to begin this process from May 15th.
 
 Could you please guide us on the steps required to complete the onboarding in the DEV environment? Alternatively, let us know who we can reach out to for assistance with this.
