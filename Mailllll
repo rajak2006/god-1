@@ -1,6 +1,6 @@
 Dear Team,
 
-We were able to restore the MSTR backup successfully using the CURL utility, and the MSTR environment is now up and running fine.
+We were able to restore the MSTR backup successfully using our custom-built CURL utility image, and the MSTR environment is now up and running successfully. The provided rclone image had issues and was not able to restore or proceed further with the process. Hence, we used our own build image to complete the restoration successfully. We request that this image/fix be incorporated into your upcoming releases.
 
 However, we observed that deployment fails when using our current `LimitRange` and `ResourceQuota` configurations in the namespace, resulting in the attached error. The deployment succeeds only after removing the existing `LimitRange` and `ResourceQuota` settings.
 
