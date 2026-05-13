@@ -1,4 +1,51 @@
+You can do this in a shell script like this:
 
+```sh
+#!/bin/bash
+
+# Step 1: Get the process line
+PROC_LINE=$(ps -ef | grep MSTRSvr | grep -v grep)
+
+# Step 2: Extract only the binary path
+BIN_PATH=$(echo "$PROC_LINE" | awk '{for(i=1;i<=NF;i++) if($i ~ /\/opt\/tableau\/.*\/Install\/IntelligenceServer\/bin\/MSTRSvr/) print $i}')
+
+echo "Binary Path: $BIN_PATH"
+
+# Step 3: Cut only /opt/tableau/MSTRDec11512
+BASE_PATH=$(echo "$BIN_PATH" | sed 's|/Install/IntelligenceServer/bin/MSTRSvr||')
+
+echo "Base Path: $BASE_PATH"
+
+# Step 4: Use variable in further steps
+echo "Using variable: $BASE_PATH"
+
+# Example further usage
+LOG_PATH="$BASE_PATH/logs"
+echo "Log Path: $LOG_PATH"
+```
+
+Example output:
+
+```sh
+Binary Path: /opt/tableau/MSTRDec11512/Install/IntelligenceServer/bin/MSTRSvr
+Base Path: /opt/tableau/MSTRDec11512
+Using variable: /opt/tableau/MSTRDec11512
+Log Path: /opt/tableau/MSTRDec11512/logs
+```
+
+A shorter one-liner version:
+
+```sh
+BASE_PATH=$(ps -ef | grep MSTRSvr | grep -v grep | grep -o '/opt/tableau/[^ ]*' | sed 's|/Install/IntelligenceServer/bin/MSTRSvr||')
+```
+
+Then use:
+
+```sh
+echo $BASE_PATH
+```
+
+###₹#₹
 Got it 👍 — here is your **FULL integrated script**:
 
 ✔ Uses your backup logic
