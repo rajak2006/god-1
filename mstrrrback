@@ -1,4 +1,284 @@
+{
+ "metadata":{
 
+   "db_type":"Oracle",
+
+   "dsn_name":"MD_Feb3",
+
+   "username":"MSTR_11512_MD",
+
+   "password":"xxxxx",
+
+   "prefix":""
+ },
+
+ "mstr":{
+
+   "install_path":
+   "/opt/tableau/MSTRDec11512",
+
+   "project_source_name":
+   "MSTRJan",
+
+   "server definition":
+   "sd-050g-a6dj.nam.nsroot.net",
+
+   "username":
+   "Administrator",
+
+   "password":
+   "xxxxx"
+ },
+
+ "platform_analytics":{
+
+    "backup":false
+ },
+
+ "collaboration_server":{
+
+    "backup":false
+ },
+
+ "history_list":{
+
+    "backup":false
+ },
+
+ "mstrbak":{
+
+   "response_file_path":
+   "/tmp/response.json",
+
+   "backup_path":
+   "/tmp"
+ }
+}
+#########################################
+
+#!/bin/bash
+
+set -e
+set +x
+
+##############################################################################
+# CONFIG
+##############################################################################
+
+DEFAULT_RESPONSE="/tmp/response.json"
+
+yn_to_bool() {
+
+case "${1,,}" in
+   yes|y)
+      echo true
+      ;;
+   *)
+      echo false
+      ;;
+esac
+
+}
+
+trim() {
+    echo "$1" | xargs
+}
+
+##############################################################################
+# USER INPUT
+##############################################################################
+
+echo "================================================"
+echo "       MSTRBAK RESPONSE.JSON GENERATOR"
+echo "================================================"
+
+echo ""
+echo "--------------- BASIC ----------------"
+
+read -p "MicroStrategy home path [/opt/tableau/MSTRDec11512]: " MSTR_HOME
+MSTR_HOME=$(trim "${MSTR_HOME:-/opt/tableau/MSTRDec11512}")
+
+read -p "Project source name [MSTRJan]: " PROJECT_SOURCE
+PROJECT_SOURCE=$(trim "${PROJECT_SOURCE:-MSTRJan}")
+
+echo ""
+echo "------ PROJECT METADATA CREDENTIALS ------"
+
+read -p "Username [administrator]: " MSTR_USER
+MSTR_USER=$(trim "${MSTR_USER:-administrator}")
+
+read -s -p "Password: " MSTR_PASS
+echo
+
+echo ""
+echo "------------- METADATA ----------------"
+
+read -p "Metadata DSN name [MD_Feb3]: " DSN_NAME
+DSN_NAME=$(trim "${DSN_NAME:-MD_Feb3}")
+
+read -p "Metadata Username: " MD_USER
+MD_USER=$(trim "$MD_USER")
+
+read -s -p "Metadata Password: " MD_PASS
+echo
+
+read -p "Metadata Prefix: " PREFIX
+PREFIX=$(trim "$PREFIX")
+
+echo ""
+echo "------------- BACKUP OPTIONS ------------"
+
+read -p "Keep same projects loaded? [yes]: " KEEP
+KEEP=$(yn_to_bool "${KEEP:-yes}")
+
+read -p "Backup Platform Analytics warehouse? [no]: " PA
+PA=$(yn_to_bool "${PA:-no}")
+
+read -p "Backup Collaboration Server database? [no]: " COLLAB
+COLLAB=$(yn_to_bool "${COLLAB:-no}")
+
+read -p "Server definition [sd-050g-a6dj.nam.nsroot.net]: " SERVER
+SERVER=$(trim "${SERVER:-sd-050g-a6dj.nam.nsroot.net}")
+
+read -p "Backup History List? [no]: " HISTORY
+HISTORY=$(yn_to_bool "${HISTORY:-no}")
+
+read -p "Backup Additional Warehouses? [no]: " WAREHOUSE
+WAREHOUSE=$(yn_to_bool "${WAREHOUSE:-no}")
+
+read -p "Backup Cubes? [no]: " CUBES
+CUBES=$(yn_to_bool "${CUBES:-no}")
+
+read -p "Backup Caches? [no]: " CACHES
+CACHES=$(yn_to_bool "${CACHES:-no}")
+
+read -p "Backup WSRM? [no]: " WSRM
+WSRM=$(yn_to_bool "${WSRM:-no}")
+
+read -p "Backup Web configs? [no]: " WEB
+WEB=$(yn_to_bool "${WEB:-no}")
+
+read -p "Backup Mobile configs? [no]: " MOBILE
+MOBILE=$(yn_to_bool "${MOBILE:-no}")
+
+read -p "Backup Library configs? [no]: " LIBRARY
+LIBRARY=$(yn_to_bool "${LIBRARY:-no}")
+
+read -p "Backup additional flat files? [no]: " FLAT
+FLAT=$(yn_to_bool "${FLAT:-no}")
+
+read -p "Backup PDF Generator Images? [no]: " PDF
+PDF=$(yn_to_bool "${PDF:-no}")
+
+read -p "Backup custom web apps? [no]: " CUSTOM
+CUSTOM=$(yn_to_bool "${CUSTOM:-no}")
+
+read -p "Upload backup to cloud? [no]: " CLOUD
+CLOUD=$(yn_to_bool "${CLOUD:-no}")
+
+echo ""
+echo "------------- PATHS ----------------"
+
+read -p "Response file path [$DEFAULT_RESPONSE]: " RESPONSE_FILE
+RESPONSE_FILE="${RESPONSE_FILE:-$DEFAULT_RESPONSE}"
+
+read -p "Backup path [/tmp]: " BACKUP_PATH
+BACKUP_PATH="${BACKUP_PATH:-/tmp}"
+
+##############################################################################
+# GENERATE RESPONSE.JSON
+##############################################################################
+
+cat > "$RESPONSE_FILE" <<EOF
+{
+ "metadata":{
+
+   "db_type":"Oracle",
+   "dsn_name":"$DSN_NAME",
+   "username":"$MD_USER",
+   "password":"$MD_PASS",
+   "prefix":"$PREFIX"
+ },
+
+ "platform_analytics":{
+   "backup":$PA
+ },
+
+ "collaboration_server":{
+   "backup":$COLLAB
+ },
+
+ "history_list":{
+   "backup":$HISTORY
+ },
+
+ "mstr":{
+
+   "install_path":"$MSTR_HOME",
+
+   "project_source_name":"$PROJECT_SOURCE",
+
+   "server definition":"$SERVER",
+
+   "username":"$MSTR_USER",
+
+   "password":"$MSTR_PASS",
+
+   "cache_path":"",
+
+   "cube_path":"",
+
+   "wsrm_path":""
+ },
+
+ "mstrbak":{
+
+   "response_file_path":"$RESPONSE_FILE",
+
+   "backup_path":"$BACKUP_PATH"
+ },
+
+ "backup_options":{
+
+   "keep_projects_loaded":$KEEP,
+
+   "additional_warehouses":$WAREHOUSE,
+
+   "cubes":$CUBES,
+
+   "caches":$CACHES,
+
+   "wsrm":$WSRM,
+
+   "web":$WEB,
+
+   "mobile":$MOBILE,
+
+   "library":$LIBRARY,
+
+   "flat_files":$FLAT,
+
+   "pdf_generator_images":$PDF,
+
+   "custom_webapps":$CUSTOM,
+
+   "cloud_upload":$CLOUD
+ }
+}
+EOF
+
+chmod 600 "$RESPONSE_FILE"
+
+echo ""
+echo "response.json created:"
+echo "$RESPONSE_FILE"
+
+echo ""
+echo "Run backup:"
+echo "./mstrbak -r $RESPONSE_FILE"
+
+
+######################################################
 {
   "mstr_home": "/opt/",
   "server_definition": "vmserver.example.com",
