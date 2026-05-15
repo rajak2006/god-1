@@ -1,3 +1,89 @@
+
+#!/usr/bin/env python3
+
+import os
+import pty
+import select
+import sys
+import time
+import re
+
+cmd = "./mstrbak"
+
+# Specific prompt answers
+answers = {
+    "MicroStrategy home path": "/opt/MicroStrategy",
+    "Project source name": "MSTRJan",
+    "Username": "administrator",
+    "Password": "mypassword"
+}
+
+pid, fd = pty.fork()
+
+if pid == 0:
+    os.execvp(cmd, [cmd])
+
+buffer = ""
+
+while True:
+
+    r, _, _ = select.select([fd], [], [], 1)
+
+    if fd in r:
+        try:
+            output = os.read(fd, 1024).decode(errors="ignore")
+        except OSError:
+            break
+
+        if not output:
+            break
+
+        sys.stdout.write(output)
+        sys.stdout.flush()
+
+        buffer += output
+
+        # Handle fixed prompts
+        for prompt, value in answers.items():
+
+            if prompt in buffer:
+                time.sleep(1)
+
+                print(f"\nSending: {value}")
+
+                os.write(fd, (value + "\n").encode())
+
+                buffer = ""
+                break
+
+        # Handle generic Yes/No prompts
+        if re.search(r"\[(Y|N)\]", buffer):
+
+            default = re.search(r"\[(Y|N)\]", buffer).group(1)
+
+            # Press Enter to accept default
+            response = ""
+
+            print(f"\nAccepting default [{default}]")
+
+            time.sleep(1)
+
+            os.write(fd, (response + "\n").encode())
+
+            buffer = ""
+
+    try:
+        pid_result, status = os.waitpid(pid, os.WNOHANG)
+
+        if pid_result != 0:
+            break
+
+    except ChildProcessError:
+        break
+
+print("\nMSTRBak execution completed")
+##########
+
 Got it. You want the **same structure/flow as your Bash script**, but implemented in **Python**, with:
 
 * Interactive user inputs
