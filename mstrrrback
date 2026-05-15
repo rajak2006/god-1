@@ -1,3 +1,414 @@
+Got it. You want the **same structure/flow as your Bash script**, but implemented in **Python**, with:
+
+* Interactive user inputs
+* Hidden password input
+* Exact question → answer mapping
+* Logging
+* Backup validation
+* Backup path extraction
+* Rename backup file
+* No input shifting problem
+
+This Python version follows the same **end-to-end format** as your `mstrbak_automation.sh`.
+
+## 📄 `mstrbak_automation.py`
+
+```python
+#!/usr/bin/env python3
+
+###############################################################################
+# Script Name : mstrbak_automation.py
+# Description : Automates interactive mstrbak backup
+# Author      : Production Automation
+###############################################################################
+
+import subprocess
+import getpass
+import re
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+import shutil
+
+###############################################################################
+# CONFIG
+###############################################################################
+
+MSTRBAK_CMD="/opt/tableau/MSTRDec11512/mstrbkc/Mstrbak-client/mstrbak"
+
+LOG_DIR="/tmp/mstrbak_logs"
+
+Path(LOG_DIR).mkdir(parents=True,exist_ok=True)
+
+TIMESTAMP=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+LOG_FILE=f"{LOG_DIR}/mstrbak_{TIMESTAMP}.log"
+
+###############################################################################
+# USER INPUTS
+###############################################################################
+
+print("================================================")
+print("      MICROSTRATEGY BACKUP AUTOMATION")
+print("================================================")
+
+print("\n----- BASIC CONFIGURATION -----")
+
+MSTR_HOME=input(
+    "MicroStrategy home path: ").strip()
+
+PROJECT_SOURCE=input(
+    "Project source name (Enter=default): ").strip()
+
+print("\n----- MSTR CREDENTIALS -----")
+
+MSTR_USER=input(
+    "MSTR Username: ").strip()
+
+MSTR_PASS=getpass.getpass(
+    "MSTR Password: ")
+
+print("\n----- METADATA -----")
+
+DSN_NAME=input(
+    "Metadata DSN name: ").strip()
+
+MD_USER=input(
+    "Metadata Username: ").strip()
+
+MD_PASS=getpass.getpass(
+    "Metadata Password: ")
+
+MD_PREFIX=input(
+    "Metadata Prefix(optional): ").strip()
+
+print("\n----- BACKUP OPTIONS -----")
+
+KEEP_PROJECTS=input(
+"Keep same projects loaded (yes/no): ")
+
+PLATFORM=input(
+"Backup Platform Analytics? (yes/no): ")
+
+COLLAB=input(
+"Backup Collaboration Server? (yes/no): ")
+
+SERVER=input(
+"Server definition: ").strip()
+
+HISTORY=input(
+"Backup History List? (yes/no): ")
+
+WAREHOUSE=input(
+"Backup additional warehouses? (yes/no): ")
+
+CUBES=input(
+"Backup cubes? (yes/no): ")
+
+CACHES=input(
+"Backup caches? (yes/no): ")
+
+WSRM=input(
+"Backup wsrm? (yes/no): ")
+
+WEB=input(
+"Backup web configs? (yes/no): ")
+
+MOBILE=input(
+"Backup mobile configs? (yes/no): ")
+
+LIBRARY=input(
+"Backup library configs? (yes/no): ")
+
+FLAT=input(
+"Backup flat files? (yes/no): ")
+
+PDF=input(
+"Backup PDF Generator Images? (yes/no): ")
+
+CUSTOM=input(
+"Backup custom webapps? (yes/no): ")
+
+UPLOAD=input(
+"Upload cloud backup? (yes/no): ")
+
+print("\n----- PATHS -----")
+
+RESPONSE=input(
+"Response file path: ").strip()
+
+BACKUP=input(
+"Backup path: ").strip()
+
+###############################################################################
+# QUESTION MAP
+###############################################################################
+
+metadata_phase=False
+
+question_map={
+
+r"MicroStrategy home path":
+MSTR_HOME,
+
+r"Project source name":
+PROJECT_SOURCE,
+
+r"Metadata DSN name":
+DSN_NAME,
+
+r"Metadata prefix":
+MD_PREFIX,
+
+r"keep the same projects loaded":
+KEEP_PROJECTS,
+
+r"Platform Analytics":
+PLATFORM,
+
+r"Collaboration Server":
+COLLAB,
+
+r"Server definition":
+SERVER,
+
+r"History List":
+HISTORY,
+
+r"additional warehouses":
+WAREHOUSE,
+
+r"backup the cubes":
+CUBES,
+
+r"backup the caches":
+CACHES,
+
+r"backup the wsrm":
+WSRM,
+
+r"web":
+WEB,
+
+r"mobile":
+MOBILE,
+
+r"library":
+LIBRARY,
+
+r"additional flat files":
+FLAT,
+
+r"PDF Generator":
+PDF,
+
+r"custom web apps":
+CUSTOM,
+
+r"cloud storage":
+UPLOAD,
+
+r"Response file path":
+RESPONSE,
+
+r"Backup path":
+BACKUP
+
+}
+
+###############################################################################
+# EXECUTE MSTRBAK
+###############################################################################
+
+print("\nStarting MicroStrategy Backup...")
+print(f"Log File: {LOG_FILE}")
+
+log=open(LOG_FILE,"w")
+
+proc=subprocess.Popen(
+MSTRBAK_CMD,
+stdin=subprocess.PIPE,
+stdout=subprocess.PIPE,
+stderr=subprocess.STDOUT,
+text=True,
+bufsize=1
+)
+
+mstr_phase=True
+
+while True:
+
+    line=proc.stdout.readline()
+
+    if not line:
+        break
+
+    print(line,end="")
+    log.write(line)
+
+    ##########################################################
+    # Detect metadata credential section
+    ##########################################################
+
+    if "Please input credentials to the database" in line:
+        mstr_phase=False
+        continue
+
+    ##########################################################
+    # Username handling
+    ##########################################################
+
+    if "Username ->" in line:
+
+        if mstr_phase:
+
+            proc.stdin.write(
+                MSTR_USER+"\n")
+
+        else:
+
+            proc.stdin.write(
+                MD_USER+"\n")
+
+        proc.stdin.flush()
+
+        continue
+
+    ##########################################################
+    # Password handling
+    ##########################################################
+
+    if "Password ->" in line:
+
+        if mstr_phase:
+
+            proc.stdin.write(
+                MSTR_PASS+"\n")
+
+        else:
+
+            proc.stdin.write(
+                MD_PASS+"\n")
+
+        proc.stdin.flush()
+
+        continue
+
+    ##########################################################
+    # Other prompts
+    ##########################################################
+
+    for pattern,value in question_map.items():
+
+        if re.search(
+            pattern,
+            line,
+            re.IGNORECASE):
+
+            proc.stdin.write(
+                value+"\n")
+
+            proc.stdin.flush()
+
+            break
+
+proc.wait()
+
+log.close()
+
+###############################################################################
+# VALIDATE
+###############################################################################
+
+print("\nValidating backup...")
+
+with open(LOG_FILE) as f:
+
+    content=f.read()
+
+if "finished successfully" not in content.lower():
+
+    print("\nERROR: Backup failed")
+
+    print("\nLast 20 lines:\n")
+
+    print(
+        "\n".join(
+        content.splitlines()[-20:]))
+
+    sys.exit(1)
+
+###############################################################################
+# EXTRACT BACKUP PATH
+###############################################################################
+
+match=re.findall(
+r"archive created locally at:\s*(.*?\.tar\.gz)",
+content)
+
+if not match:
+
+    print(
+    "Backup path not found")
+
+    sys.exit(1)
+
+backup_path=match[-1].strip()
+
+if not os.path.isfile(
+backup_path):
+
+    print(
+    "Backup file missing")
+
+    sys.exit(1)
+
+###############################################################################
+# RENAME BACKUP
+###############################################################################
+
+filename=os.path.basename(
+backup_path)
+
+new_name=f"{PROJECT_SOURCE}-backup-{filename}"
+
+new_path=os.path.join(
+os.path.dirname(
+backup_path),
+new_name)
+
+shutil.move(
+backup_path,
+new_path)
+
+###############################################################################
+# FINAL
+###############################################################################
+
+print("\n================================")
+
+print("BACKUP SUCCESS")
+
+print(
+f"Backup : {new_path}")
+
+print(
+f"Log    : {LOG_FILE}")
+
+print("================================")
+```
+
+Run:
+
+```bash
+chmod +x mstrbak_automation.py
+python3 mstrbak_automation.py
+```
+
+This keeps the same operational style as your Bash script, but fixes the core issue: **answers are sent only when the exact prompt appears**, so credentials no longer shift.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Now we found the root cause: hidden spaces in the generated input file were shifting values and causing repeated Password -> prompts.
 
 Below is a cleaned-up end-to-end Bash-only script that:
