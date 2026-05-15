@@ -1,3 +1,281 @@
+Now we found the root cause: hidden spaces in the generated input file were shifting values and causing repeated Password -> prompts.
+
+Below is a cleaned-up end-to-end Bash-only script that:
+
+Prompts all inputs interactively
+
+Removes leading/trailing hidden spaces automatically
+
+Generates a numbered input file for debugging
+
+Sends inputs to mstrbak
+
+Creates logs
+
+Validates success
+
+Extracts and renames backup file
+
+Handles failures cleanly
+
+Uses no expect
+
+
+
+---
+
+📄 mstrbak_automation.sh
+
+#!/bin/bash
+
+set -euo pipefail
+IFS=$'\n\t'
+set +x
+
+###############################################################################
+# CONFIG
+###############################################################################
+
+MSTRBAK_CMD="/opt/tableau/MSTRDec11512/mstrbkc/Mstrbak-client/mstrbak"
+
+LOG_DIR="/tmp/mstrbak_logs"
+INPUT_FILE="/tmp/mstr_input.txt"
+
+TIMESTAMP=$(date +%F_%H-%M-%S)
+LOG_FILE="$LOG_DIR/mstrbak_${TIMESTAMP}.log"
+
+mkdir -p "$LOG_DIR"
+
+###############################################################################
+# FUNCTION TO REMOVE HIDDEN SPACES
+###############################################################################
+
+trim() {
+    echo "$1" | xargs
+}
+
+###############################################################################
+# USER INPUTS
+###############################################################################
+
+echo "========== MICROSTRATEGY BACKUP =========="
+
+read -r -p "MicroStrategy home path: " MSTR_HOME
+MSTR_HOME=$(trim "$MSTR_HOME")
+
+read -r -p "Project source name (Enter=default): " PROJECT_SOURCE
+PROJECT_SOURCE=$(trim "$PROJECT_SOURCE")
+
+echo ""
+echo "---- MSTR Credentials ----"
+
+read -r -p "MSTR Username: " MSTR_USER
+MSTR_USER=$(trim "$MSTR_USER")
+
+read -s -p "MSTR Password: " MSTR_PASS
+echo ""
+
+echo ""
+echo "---- Metadata ----"
+
+read -r -p "Metadata DSN name: " DSN_NAME
+DSN_NAME=$(trim "$DSN_NAME")
+
+read -r -p "Metadata Username: " MD_USER
+MD_USER=$(trim "$MD_USER")
+
+read -s -p "Metadata Password: " MD_PASS
+echo ""
+
+read -r -p "Metadata Prefix (Enter if none): " MD_PREFIX
+MD_PREFIX=$(trim "$MD_PREFIX")
+
+###############################################################################
+# YES / NO QUESTIONS
+###############################################################################
+
+read -r -p "Keep same projects loaded? (yes/no): " KEEP_PROJECTS
+read -r -p "Backup Platform Analytics? (yes/no): " PLATFORM_ANALYTICS
+read -r -p "Backup Collaboration Server? (yes/no): " COLLAB_SERVER
+
+read -r -p "Server Definition: " SERVER_DEF
+SERVER_DEF=$(trim "$SERVER_DEF")
+
+read -r -p "Backup History List? (yes/no): " HISTORY_LIST
+read -r -p "Backup Additional Warehouses? (yes/no): " ADDITIONAL_WAREHOUSE
+read -r -p "Backup Cubes? (yes/no): " CUBES
+read -r -p "Backup Caches? (yes/no): " CACHES
+read -r -p "Backup wsrm? (yes/no): " WSRM
+read -r -p "Backup Web? (yes/no): " WEB_BACKUP
+read -r -p "Backup Mobile? (yes/no): " MOBILE_BACKUP
+read -r -p "Backup Library? (yes/no): " LIBRARY_BACKUP
+read -r -p "Backup Flat files? (yes/no): " FLAT_FILES
+read -r -p "Backup PDF Images? (yes/no): " PDF_IMAGES
+read -r -p "Backup Custom Web Apps? (yes/no): " CUSTOM_WEBAPPS
+read -r -p "Upload to Cloud? (yes/no): " CLOUD_UPLOAD
+
+echo ""
+echo "---- PATHS ----"
+
+read -r -p "Response file path: " RESPONSE_FILE
+RESPONSE_FILE=$(trim "$RESPONSE_FILE")
+
+read -r -p "Backup path: " BACKUP_PATH
+BACKUP_PATH=$(trim "$BACKUP_PATH")
+
+###############################################################################
+# VALIDATE
+###############################################################################
+
+if [ ! -x "$MSTRBAK_CMD" ]; then
+    echo "ERROR: mstrbak not executable"
+    exit 1
+fi
+
+###############################################################################
+# CREATE INPUT FILE
+###############################################################################
+
+cat > "$INPUT_FILE" <<EOF
+$MSTR_HOME
+${PROJECT_SOURCE:-}
+$MSTR_USER
+$MSTR_PASS
+$DSN_NAME
+$MD_USER
+$MD_PASS
+${MD_PREFIX:-}
+$KEEP_PROJECTS
+$PLATFORM_ANALYTICS
+$COLLAB_SERVER
+$SERVER_DEF
+$HISTORY_LIST
+$ADDITIONAL_WAREHOUSE
+$CUBES
+$CACHES
+$WSRM
+$WEB_BACKUP
+$MOBILE_BACKUP
+$LIBRARY_BACKUP
+$FLAT_FILES
+$PDF_IMAGES
+$CUSTOM_WEBAPPS
+$CLOUD_UPLOAD
+$RESPONSE_FILE
+$BACKUP_PATH
+EOF
+
+###############################################################################
+# REMOVE HIDDEN SPACES
+###############################################################################
+
+sed -i 's/[[:space:]]*$//' "$INPUT_FILE"
+
+###############################################################################
+# DEBUG
+###############################################################################
+
+echo ""
+echo "========= GENERATED INPUT ========="
+nl -ba "$INPUT_FILE"
+echo "==================================="
+
+###############################################################################
+# EXECUTE
+###############################################################################
+
+echo ""
+echo "Starting MicroStrategy Backup..."
+echo "Log File: $LOG_FILE"
+
+"$MSTRBAK_CMD" < "$INPUT_FILE" > "$LOG_FILE" 2>&1
+
+###############################################################################
+# VALIDATE
+###############################################################################
+
+echo ""
+echo "Validating backup..."
+
+if ! grep -qi "finished successfully" "$LOG_FILE"; then
+
+    echo "ERROR: Backup failed"
+
+    tail -20 "$LOG_FILE"
+
+    exit 1
+fi
+
+###############################################################################
+# EXTRACT BACKUP PATH
+###############################################################################
+
+BACKUP_PATH_EXTRACT=$(grep -i "archive created locally at" "$LOG_FILE" \
+| tail -1 \
+| sed -E "s/.*archive created locally at:[[:space:]]*([^']+).*/\1/" \
+| tr -d '\r' \
+| sed 's/\x1b\[[0-9;]*m//g' \
+| xargs)
+
+if [ -z "$BACKUP_PATH_EXTRACT" ]; then
+   echo "ERROR: Backup file path not found"
+   exit 1
+fi
+
+###############################################################################
+# RENAME
+###############################################################################
+
+BACKUP_FILE=$(basename "$BACKUP_PATH_EXTRACT")
+
+NEW_NAME="${PROJECT_SOURCE:-MSTR}-backup-${BACKUP_FILE}"
+
+NEW_PATH="$(dirname "$BACKUP_PATH_EXTRACT")/$NEW_NAME"
+
+mv "$BACKUP_PATH_EXTRACT" "$NEW_PATH"
+
+###############################################################################
+# FINAL
+###############################################################################
+
+echo ""
+echo "=================================="
+echo "SUCCESS"
+echo "Backup : $NEW_PATH"
+echo "Log    : $LOG_FILE"
+echo "=================================="
+
+
+---
+
+Run
+
+chmod +x mstrbak_automation.sh
+./mstrbak_automation.sh
+
+
+---
+
+Debug hidden characters
+
+If troubleshooting:
+
+cat -A /tmp/mstr_input.txt
+
+Correct:
+
+administrator$
+MSTR_11512_MD$
+yes$
+
+Wrong:
+
+administrator $
+MSTR_11512_MD  $
+
+This version automatically trims those hidden spaces.
+
+######
 Yes 👍 — now I clearly understand your exact requirement.
 
 You want:
