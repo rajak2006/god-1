@@ -1,3 +1,309 @@
+
+#!/bin/bash
+
+set -e
+set +x
+
+trim(){
+   echo "$1" | xargs
+}
+
+yn_to_bool(){
+
+case "${1,,}" in
+ yes|y)
+   echo true
+   ;;
+ *)
+   echo false
+   ;;
+esac
+}
+
+echo "==========================================="
+echo "      MSTRBAK RESPONSE GENERATOR"
+echo "==========================================="
+
+echo ""
+read -p "MicroStrategy home path: " MSTR_HOME
+MSTR_HOME=$(trim "$MSTR_HOME")
+
+read -p "Project source name: " PROJECT_SOURCE
+PROJECT_SOURCE=$(trim "$PROJECT_SOURCE")
+
+echo ""
+echo "Please input credentials with access to project metadata"
+
+read -p "Username: " MSTR_USER
+MSTR_USER=$(trim "$MSTR_USER")
+
+read -s -p "Password: " MSTR_PASS
+echo
+
+echo ""
+read -p "Metadata DSN name: " DSN_NAME
+DSN_NAME=$(trim "$DSN_NAME")
+
+echo ""
+echo "Please input credentials to database"
+
+read -p "Metadata Username: " MD_USER
+MD_USER=$(trim "$MD_USER")
+
+read -s -p "Metadata Password: " MD_PASS
+echo
+
+read -p "Metadata Prefix: " MD_PREFIX
+MD_PREFIX=$(trim "$MD_PREFIX")
+
+echo ""
+read -p "Keep same projects loaded? (yes/no): " KEEP_PROJECTS
+KEEP_PROJECTS=$(yn_to_bool "$KEEP_PROJECTS")
+
+read -p "Backup Platform Analytics warehouse? (yes/no): " PLATFORM_ANALYTICS
+PLATFORM_ANALYTICS=$(yn_to_bool "$PLATFORM_ANALYTICS")
+
+read -p "Backup Collaboration Server database? (yes/no): " COLLAB_SERVER
+COLLAB_SERVER=$(yn_to_bool "$COLLAB_SERVER")
+
+read -p "Server definition: " SERVER_DEF
+SERVER_DEF=$(trim "$SERVER_DEF")
+
+read -p "Backup History List? (yes/no): " HISTORY_LIST
+HISTORY_LIST=$(yn_to_bool "$HISTORY_LIST")
+
+read -p "Backup additional warehouses? (yes/no): " ADDITIONAL_WAREHOUSE
+ADDITIONAL_WAREHOUSE=$(yn_to_bool "$ADDITIONAL_WAREHOUSE")
+
+read -p "Backup cubes? (yes/no): " CUBES
+CUBES=$(yn_to_bool "$CUBES")
+
+read -p "Backup caches? (yes/no): " CACHES
+CACHES=$(yn_to_bool "$CACHES")
+
+read -p "Backup wsrm? (yes/no): " WSRM
+WSRM=$(yn_to_bool "$WSRM")
+
+read -p "Backup web images/plugins/configurations? (yes/no): " WEB_BACKUP
+WEB_BACKUP=$(yn_to_bool "$WEB_BACKUP")
+
+read -p "Backup mobile images/plugins/configurations? (yes/no): " MOBILE_BACKUP
+MOBILE_BACKUP=$(yn_to_bool "$MOBILE_BACKUP")
+
+read -p "Backup library images/plugins/configurations? (yes/no): " LIBRARY_BACKUP
+LIBRARY_BACKUP=$(yn_to_bool "$LIBRARY_BACKUP")
+
+read -p "Backup additional flat files? (yes/no): " FLAT_FILES
+FLAT_FILES=$(yn_to_bool "$FLAT_FILES")
+
+read -p "Backup PDF Generator Images? (yes/no): " PDF_IMAGES
+PDF_IMAGES=$(yn_to_bool "$PDF_IMAGES")
+
+read -p "Backup custom web apps? (yes/no): " CUSTOM_WEBAPPS
+CUSTOM_WEBAPPS=$(yn_to_bool "$CUSTOM_WEBAPPS")
+
+read -p "Upload backup to cloud storage? (yes/no): " CLOUD_UPLOAD
+CLOUD_UPLOAD=$(yn_to_bool "$CLOUD_UPLOAD")
+
+read -p "Response file path: " RESPONSE_FILE
+RESPONSE_FILE=$(trim "$RESPONSE_FILE")
+
+read -p "Backup path: " BACKUP_PATH
+BACKUP_PATH=$(trim "$BACKUP_PATH")
+
+cat > "$RESPONSE_FILE" <<EOF
+{
+ "additional_files":[],
+
+ "aws":{
+   "s3_access_key":"",
+   "s3_bucket_name":"",
+   "s3_secret_key":"",
+   "upload":$CLOUD_UPLOAD
+ },
+
+ "collaboration_server":{
+   "backup":$COLLAB_SERVER,
+   "bin_path":"",
+   "db_host":"",
+   "db_port":-1,
+   "db_type":"",
+   "username":"",
+   "password":""
+ },
+
+ "history_list":{
+   "backup":$HISTORY_LIST,
+   "bin_path":"",
+   "db_type":"",
+   "dsn_name":"",
+   "password":"",
+   "username":""
+ },
+
+ "metadata":{
+
+   "db_type":"Oracle",
+
+   "dsn_name":"$DSN_NAME",
+
+   "password":"$MD_PASS",
+
+   "prefix":"$MD_PREFIX",
+
+   "username":"$MD_USER"
+ },
+
+ "platform_analytics":{
+
+   "backup":$PLATFORM_ANALYTICS,
+
+   "bin_path":"",
+
+   "db_type":"",
+
+   "dsn_name":"",
+
+   "password":"",
+
+   "username":""
+ },
+
+ "library":{
+
+   "backup_contents":{
+
+      "backup_configuration_files":{
+
+         "configOverride.properties":false,
+
+         "mapConfig.xml":false
+      },
+
+      "backup_images":$LIBRARY_BACKUP,
+
+      "backup_plugins":$LIBRARY_BACKUP,
+
+      "backup_sso":false
+   },
+
+   "path":""
+ },
+
+ "mobile":{
+
+   "backup_contents":{
+
+      "backup_configuration_files":{
+
+        "WEB-INF/xml/mobile":false,
+
+        "mapConfig.xml":false
+      },
+
+      "backup_images":$MOBILE_BACKUP,
+
+      "backup_plugins":$MOBILE_BACKUP,
+
+      "backup_sso":false
+   },
+
+   "path":""
+ },
+
+ "mstr":{
+
+   "cache_path":"",
+
+   "configuration_locked":false,
+
+   "cube_path":"",
+
+   "driver_paths":{"mysql":""},
+
+   "history_list_storage":"",
+
+   "hostnames":[
+      "$SERVER_DEF"
+   ],
+
+   "inbox_path":"",
+
+   "install_path":"$MSTR_HOME",
+
+   "iserver_image_path":"",
+
+   "mstr_version":"11.5.1200.0232",
+
+   "password":"$MSTR_PASS",
+
+   "project_source_name":"$PROJECT_SOURCE",
+
+   "projects":{
+
+      "main_project":"$PROJECT_SOURCE",
+
+      "projects_locked":[],
+
+      "projects_to_register":[
+          "$PROJECT_SOURCE"
+      ],
+
+      "projects_to_unregister":[]
+   },
+
+   "scheduler_on":true,
+
+   "server definition":"$SERVER_DEF",
+
+   "username":"$MSTR_USER",
+
+   "wsrm_path":""
+ },
+
+ "mstrbak":{
+
+   "backup_path":"$BACKUP_PATH",
+
+   "mstrbak_version":2.1,
+
+   "response_file_path":"$RESPONSE_FILE"
+ },
+
+ "web":{
+
+   "backup_contents":{
+
+      "backup_configuration_files":{
+
+         "mapConfig.xml":false,
+
+         "sys_defaults.properties":false
+      },
+
+      "backup_images":$WEB_BACKUP,
+
+      "backup_plugins":$WEB_BACKUP,
+
+      "backup_sso":false
+   },
+
+   "path":""
+ }
+}
+EOF
+
+chmod 600 "$RESPONSE_FILE"
+
+echo ""
+echo "response.json generated:"
+echo "$RESPONSE_FILE"
+
+echo ""
+echo "Executing backup..."
+
+./mstrbak -r "$RESPONSE_FILE"
+######################################################################################
 {
  "metadata":{
 
