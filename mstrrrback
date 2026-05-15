@@ -1,4 +1,43 @@
 
+{
+  "mstr_home": "/opt/",
+  "server_definition": "vmserver.example.com",
+  "project_source_name": "MSTRJan",
+
+  "mstr_username": "Administrator",
+  "mstr_password": "CHANGE_ME",
+
+  "metadata_dsn": "MD Feb3",
+  "db_username": "MSTR11512MD",
+  "db_password": "CHANGE_ME",
+  "metadata_prefix": "",
+
+  "backup_options": {
+    "metadata": true,
+    "keep_same_projects_loaded": true,
+    "platform_analytics": false,
+    "collaboration_server": false,
+    "history_list": false,
+    "additional_warehouses": false,
+    "cubes": false,
+    "caches": false,
+    "wsrm": false,
+    "web": false,
+    "mobile": false,
+    "library": false,
+    "flat_files": false,
+    "pdf_images": false,
+    "custom_webapps": false
+  },
+
+  "output": {
+    "response_file_path": "/opt/mstrbkc/mstrbak/response.json",
+    "backup_path": "/opt/mstrbkc/mstrbak",
+    "upload_to_cloud": false
+  }
+}
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 #!/usr/bin/env python3
 
 import os
