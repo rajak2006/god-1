@@ -1,3 +1,42 @@
+ZIP_FILE="mstr.zip"
+
+if [ ! -f "$ZIP_FILE" ]; then
+    echo "ERROR: $ZIP_FILE not found"
+    exit 1
+fi
+
+echo "Extracting $ZIP_FILE into $MSTR_HOME ..."
+
+unzip -o "$ZIP_FILE" -d "$MSTR_HOME" >/dev/null 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: unzip failed"
+    exit 1
+fi
+
+echo "Extraction completed"
+
+MSTRBAK_CMD="$MSTR_HOME/Mstrbak-client/mstrbak"
+
+if [ ! -f "$MSTRBAK_CMD" ]; then
+    echo "ERROR: mstrbak not found"
+
+    echo "Expected:"
+    echo "$MSTRBAK_CMD"
+
+    exit 1
+fi
+
+chmod +x "$MSTRBAK_CMD"
+
+echo "Using:"
+echo "$MSTRBAK_CMD"
+
+"$MSTRBAK_CMD" -r "$RESPONSE_FILE"
+
+++++++++++++++++++++++++++++++++++++
+
+
 #!/bin/bash
 
 MSTR_HOME=$(ps -ef | \
@@ -32,14 +71,6 @@ MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" \
 grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | \
 head -1)
 
-echo "MSTR Version: $MSTR_VERSION"
-
-
-==================================
-MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" -s IntelligenceServer gs 2>/dev/null | \
-grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | \
-head -1)
-
 if [ -z "$MSTR_VERSION" ]; then
    echo "ERROR: Unable to determine MSTR version"
    exit 1
@@ -47,7 +78,55 @@ fi
 
 echo "MSTR Version: $MSTR_VERSION"
 
+LOG_DIR="/tmp/mstrbak_logs"
 
+if [ ! -d "$LOG_DIR" ]; then
+    mkdir -p "$LOG_DIR"
+
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to create log directory"
+        exit 1
+    fi
+
+    echo "Created log directory: $LOG_DIR"
+fi
+
+ZIP_FILE="mstr.zip"
+
+if [ ! -f "$ZIP_FILE" ]; then
+    echo "ERROR: $ZIP_FILE not found"
+    exit 1
+fi
+
+echo "Extracting $ZIP_FILE into $MSTR_HOME ..."
+
+unzip -o "$ZIP_FILE" -d "$MSTR_HOME" >/dev/null 2>&1
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: unzip failed"
+    exit 1
+fi
+
+echo "Extraction completed"
+
+MSTRBAK_CMD="$MSTR_HOME/Mstrbak-client/mstrbak"
+
+if [ ! -f "$MSTRBAK_CMD" ]; then
+    echo "ERROR: mstrbak not found"
+
+    echo "Expected:"
+    echo "$MSTRBAK_CMD"
+
+    exit 1
+fi
+
+chmod +x "$MSTRBAK_CMD"
+
+echo "Using:"
+echo "$MSTRBAK_CMD"
+
+"$MSTRBAK_CMD" -r "$RESPONSE_FILE"
+==========================================
 MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" -s IntelligenceServer gs | \
 grep -Ei "version|build" | head -1 | sed 's/.*: *//')
 ++++++++++++++++++++++++
