@@ -1,4 +1,29 @@
+# Find MSTR install path dynamically
+MSTR_HOME=$(ps -ef | \
+grep -i MSTRSvr | \
+grep -v grep | \
+sed -n 's#.*\(/.*\)/Install/IntelligenceServer/bin/MSTRSvr.*#\1#p' | \
+head -1)
 
+# Validate
+if [ -z "$MSTR_HOME" ]; then
+   echo "ERROR: MSTR installation path not found"
+   exit 1
+fi
+
+echo "Detected Path: $MSTR_HOME"
+
+# Get version
+MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" -s IntelligenceServer gs 2>/dev/null | \
+grep -i "Version" | \
+head -1 | \
+awk -F: '{print $2}' | xargs)
+
+echo "MSTR Version: $MSTR_VERSION"
+
+MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" -s IntelligenceServer gs | \
+grep -Ei "version|build" | head -1 | sed 's/.*: *//')
+++++++++++++++++++++++++
 #!/bin/bash
 
 set -e
