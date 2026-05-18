@@ -1,25 +1,52 @@
-# Find MSTR install path dynamically
+#!/bin/bash
+
 MSTR_HOME=$(ps -ef | \
 grep -i MSTRSvr | \
 grep -v grep | \
-sed -n 's#.*\(/.*\)/Install/IntelligenceServer/bin/MSTRSvr.*#\1#p' | \
-head -1)
+awk '
+{
+for(i=1;i<=NF;i++)
+{
+   if($i ~ /IntelligenceServer\/bin\/MSTRSvr$/)
+   {
+      sub("/IntelligenceServer/bin/MSTRSvr","",$i)
 
-# Validate
+      sub("/Install$","",$i)
+
+      print $i
+
+      exit
+   }
+}
+}')
+
 if [ -z "$MSTR_HOME" ]; then
-   echo "ERROR: MSTR installation path not found"
+   echo "ERROR: Unable to determine install path"
    exit 1
 fi
 
 echo "Detected Path: $MSTR_HOME"
 
-# Get version
-MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" -s IntelligenceServer gs 2>/dev/null | \
-grep -i "Version" | \
-head -1 | \
-awk -F: '{print $2}' | xargs)
+MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" \
+-s IntelligenceServer gs 2>/dev/null | \
+grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | \
+head -1)
 
 echo "MSTR Version: $MSTR_VERSION"
+
+
+==================================
+MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" -s IntelligenceServer gs 2>/dev/null | \
+grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | \
+head -1)
+
+if [ -z "$MSTR_VERSION" ]; then
+   echo "ERROR: Unable to determine MSTR version"
+   exit 1
+fi
+
+echo "MSTR Version: $MSTR_VERSION"
+
 
 MSTR_VERSION=$("$MSTR_HOME/bin/mstrctl" -s IntelligenceServer gs | \
 grep -Ei "version|build" | head -1 | sed 's/.*: *//')
