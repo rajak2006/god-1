@@ -1,4 +1,142 @@
+Still mstr environment is provisioning state
 
+
+Hi Team,
+
+We have analyzed the permission issue encountered during the backup download process in the OpenShift environment.
+
+Issue Observed:
+The pod was failing with the following error while attempting to download the backup file using rclone:
+
+mkdir /opt/mstr: permission denied
+
+Root Cause:
+The container is running with a non-root/random UID in OpenShift, and the application did not have write permission to the /opt/mstr directory.
+
+Changes Implemented:
+
+1. Added pod-level securityContext configuration.
+2. Replaced the backup download destination path from /opt/mstr to /tmp/mstr.
+3. Added an emptyDir volume for temporary writable storage.
+4. Mounted the same volume in both the init container and the main application container.
+5. Updated the rclone target path to use /tmp/mstr.
+6. Added directory creation command in the init container:
+   mkdir -p /tmp/mstr
+7. Added environment variable configuration:
+
+
+yaml
+env:
+  - name: BACKUP_PATH
+    value: "/tmp/mstr"
+
+
+YAML Changes Summary:
+
+* Added:
+
+  * securityContext
+  * emptyDir volume
+  * volumeMounts
+  * mkdir -p /tmp/mstr
+  * BACKUP_PATH environment variable
+
+* Updated path:
+
+  * From: /opt/mstr
+  * To: /tmp/mstr
+
+Reason for Change:
+The /tmp directory is writable in OpenShift environments and avoids permission issues caused by restricted access to root filesystem paths such as /opt.
+
+After these changes, the backup download process is working successfully.
+
+Please review and let us know if any additional modifications are required from our side.
+
+Thanks,
+[Your Name]
+
+Here’s a shorter and more concise version of your message:
+
+Email
+
+Hi Team,
+
+We analyzed the permission issue encountered during the backup download process in the OpenShift environment.
+
+Issue Observed:
+The pod failed during backup download with the error:
+
+mkdir /opt/mstr: permission denied
+
+Root Cause:
+The container runs with a non-root/random UID in OpenShift, and the application did not have write access to /opt/mstr.
+
+Changes Implemented:
+
+Added pod-level securityContext
+Changed backup path from /opt/mstr to /tmp/mstr
+Added emptyDir volume and mounted it in both init and main containers
+Updated rclone target path to /tmp/mstr
+Added mkdir -p /tmp/mstr in init container
+Added environment variable:
+BACKUP_PATH=/tmp/mstr
+
+Reason for Change:
+/tmp is writable in OpenShift and avoids permission issues with restricted filesystem paths like /opt.
+
+After implementing these changes, the backup download process is working successfully.
+
+Please review and let us know if any additional changes are required.
+
+Thanks,
+[Your Name]
+
+But more than 1 hours no progress to complete mstrbak job and not coming up web mobile iserver pods , no error but still same progress not completed even 2 hours also 
+
+Got it — this looks like the job is now stuck after the fix, even though there are no visible errors.
+
+Here’s a short update message you can send:
+
+Hi Team,
+
+Post the recent changes, the mstrbak job is still not completing and there is no visible error in logs. It has been in the same progress state for more than 2 hours.
+
+Additionally, the Web, Mobile, and IServer pods are not coming up after the job start.
+
+Current Status:
+
+Backup job: Stuck (no progress for 2+ hours)
+Pods (Web/Mobile/IServer): Not initialized
+No errors observed in logs so far
+
+We are currently investigating potential hang during backup execution or volume mounting/permission-related blocking.
+
+We will update once we identify the root cause.
+
+Thanks,
+[Your Name]
+
+If you want, I can also help you with a quick troubleshooting checklist (PVC, init container logs, rclone hang, resource limits, etc.) to pinpoint why it’s stuck.
+
+Still mstr environment is provisioning state
+
+Hi Team,
+
+The MSTR environment is still in provisioning state. The mstrbak job has been running for more than 2 hours without any progress, and there are no visible errors in the logs.
+
+Also, the Web, Mobile, and IServer pods are not yet coming up.
+
+Current Status:
+
+Environment: Stuck in provisioning state
+Backup job (mstrbak): Running with no progress (>2 hours)
+Pods (Web/Mobile/IServer): Not started
+No errors observed so far
+
+We are currently checking for any blocking issues in the provisioning workflow or backup process.
+
+We will provide an update once we
 Updated rclone target path to /tmp/mstr
 Added mkdir -p /tmp/mstr in init container
 Added environment variable:
