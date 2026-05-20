@@ -1,3 +1,63 @@
+
+Updated rclone target path to /tmp/mstr
+Added mkdir -p /tmp/mstr in init container
+Added environment variable:
+BACKUP_PATH=/tmp/mstr
+
+Hi Team,
+
+We have analyzed the permission issue encountered during the backup download process in the OpenShift environment.
+
+Issue Observed:
+The pod was failing with the following error while attempting to download the backup file using rclone:
+
+`mkdir /opt/mstr: permission denied`
+
+Root Cause:
+The container is running with a non-root/random UID in OpenShift, and the application did not have write permission to the `/opt/mstr` directory.
+
+Changes Implemented:
+
+1. Added pod-level `securityContext` configuration.
+2. Replaced the backup download destination path from `/opt/mstr` to `/tmp/mstr`.
+3. Added an `emptyDir` volume for temporary writable storage.
+4. Mounted the same volume in both the init container and the main application container.
+5. Updated the rclone target path to use `/tmp/mstr`.
+6. Added directory creation command in the init container:
+   `mkdir -p /tmp/mstr`
+7. Added environment variable configuration:
+
+```yaml
+env:
+  - name: BACKUP_PATH
+    value: "/tmp/mstr"
+```
+
+YAML Changes Summary:
+
+* Added:
+
+  * `securityContext`
+  * `emptyDir` volume
+  * `volumeMounts`
+  * `mkdir -p /tmp/mstr`
+  * `BACKUP_PATH` environment variable
+
+* Updated path:
+
+  * From: `/opt/mstr`
+  * To: `/tmp/mstr`
+
+Reason for Change:
+The `/tmp` directory is writable in OpenShift environments and avoids permission issues caused by restricted access to root filesystem paths such as `/opt`.
+
+After these changes, the backup download process is working successfully.
+
+Please review and let us know if any additional modifications are required from our side.
+
+Thanks,
+[Your Name]
+
 Dear Team,
 
 We were able to restore the MSTR backup successfully using our custom-built CURL utility image, and the MSTR environment is now up and running successfully. The provided rclone image had issues and was not able to restore or proceed further with the process. Hence, we used our own build image to complete the restoration successfully. We request that this image/fix be incorporated into your upcoming releases.
