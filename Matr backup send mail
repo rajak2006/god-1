@@ -1,0 +1,159 @@
+If you want the email body in HTML format with a professional table, create an HTML file and send it using mailx.
+
+Create HTML Report
+
+HTML_REPORT="/tmp/mstrbak_report.html"
+
+cat > "$HTML_REPORT" <<EOF
+<html>
+<head>
+<style>
+body {
+    font-family: Arial, sans-serif;
+}
+table {
+    border-collapse: collapse;
+    width: 80%;
+}
+th {
+    background-color: #1F4E78;
+    color: white;
+    padding: 8px;
+    text-align: left;
+}
+td {
+    border: 1px solid #cccccc;
+    padding: 8px;
+}
+.success {
+    color: green;
+    font-weight: bold;
+}
+.failed {
+    color: red;
+    font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+
+<h2>MicroStrategy Backup Execution Summary</h2>
+
+<table>
+<tr>
+<th>Item</th>
+<th>Value</th>
+</tr>
+
+<tr>
+<td>Hostname</td>
+<td>$HOSTNAME</td>
+</tr>
+
+<tr>
+<td>Project Source Name</td>
+<td>$PROJECT_SOURCE</td>
+</tr>
+
+<tr>
+<td>Backup Status</td>
+<td class="success">$BACKUP_STATUS</td>
+</tr>
+
+<tr>
+<td>Renamed Archive File</td>
+<td>$ARCHIVE_NAME</td>
+</tr>
+
+<tr>
+<td>Backup File</td>
+<td>$BACKUP_FILE</td>
+</tr>
+
+<tr>
+<td>S3 Upload Status</td>
+<td class="success">$S3_UPLOAD_STATUS</td>
+</tr>
+
+<tr>
+<td>S3 Bucket File</td>
+<td>$S3_FILE</td>
+</tr>
+
+<tr>
+<td>Log File</td>
+<td>$LOG_FILE</td>
+</tr>
+
+<tr>
+<td>Execution Time</td>
+<td>$(date)</td>
+</tr>
+
+</table>
+
+<br>
+
+<p>
+Regards,<br>
+MicroStrategy Backup Automation
+</p>
+
+</body>
+</html>
+
+EOF
+
+Send HTML Email
+
+Using mailx:
+
+(
+echo "To: $TEAM_DL"
+echo "Subject: [MSTRBak] Backup Status - $PROJECT_SOURCE - $BACKUP_STATUS"
+echo "MIME-Version: 1.0"
+echo "Content-Type: text/html"
+echo
+cat "$HTML_REPORT"
+) | sendmail -t
+
+Or:
+
+mailx \
+-a "MIME-Version: 1.0" \
+-a "Content-Type: text/html" \
+-s "[MSTRBak] Backup Status - $PROJECT_SOURCE - $BACKUP_STATUS" \
+"$TEAM_DL" < "$HTML_REPORT"
+
+Attach Log File
+
+mailx \
+-a "$LOG_FILE" \
+-a "MIME-Version: 1.0" \
+-a "Content-Type: text/html" \
+-s "[MSTRBak] Backup Status - $PROJECT_SOURCE - $BACKUP_STATUS" \
+"$TEAM_DL" < "$HTML_REPORT"
+
+Failure Status Coloring
+
+Before generating HTML:
+
+if [ "$BACKUP_STATUS" = "SUCCESS" ]; then
+    STATUS_CLASS="success"
+else
+    STATUS_CLASS="failed"
+fi
+
+Then use:
+
+<td class="$STATUS_CLASS">$BACKUP_STATUS</td>
+
+This will show:
+
+🟢 Green for SUCCESS
+
+🔴 Red for FAILED
+
+
+and provide a professional HTML email summary for your MicroStrategy backup automation.
