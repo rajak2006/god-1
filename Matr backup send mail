@@ -1,3 +1,62 @@
+
+If the script must not run as root and should run only as a specific FID/user account, add a check at the beginning of the script.
+
+Option 1: Block root completely
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "ERROR: Do not run this script as root."
+    exit 1
+fi
+
+Option 2: Allow only a specific user (recommended)
+
+Example: only user fiduser
+
+REQUIRED_USER="fiduser"
+
+if [ "$(whoami)" != "$REQUIRED_USER" ]; then
+    echo "ERROR: This script must be run as $REQUIRED_USER"
+    exit 1
+fi
+
+Option 3: Verify both
+
+REQUIRED_USER="fiduser"
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "ERROR: Do not run as root"
+    exit 1
+fi
+
+if [ "$(whoami)" != "$REQUIRED_USER" ]; then
+    echo "ERROR: This script must be run as $REQUIRED_USER"
+    exit 1
+fi
+
+Display current user for troubleshooting
+
+echo "Current User : $(whoami)"
+
+Example output
+
+If root runs:
+
+ERROR: Do not run as root
+
+If another user runs:
+
+ERROR: This script must be run as fiduser
+
+If fiduser runs:
+
+Current User : fiduser
+...
+Script continues
+
+For production, I recommend Option 2, because it explicitly enforces the service account that owns the MSTR installation and backup files.
+
+###₹₹#₹
+
 If you want the email body in HTML format with a professional table, create an HTML file and send it using mailx.
 
 Create HTML Report
