@@ -1,3 +1,22 @@
+#!/bin/bash
+
+REQUIRED_USER="mstrfid"
+
+CURRENT_USER=$(id -un)
+
+if [ "$CURRENT_USER" != "$REQUIRED_USER" ]; then
+    echo "Switching execution to user: $REQUIRED_USER"
+    exec sudo -u "$REQUIRED_USER" "$0" "$@"
+fi
+
+echo "Running as: $(whoami)"
+
+88888888888888888888888888888
+BACKUP_USER="mstrfid"
+
+sudo -u "$BACKUP_USER" "$MSTR_HOME/Mstrbak-client/mstrbak" -r "$RESPONSE_FILE"
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ZIP_FILE="mstr.zip"
 
 if [ ! -f "$ZIP_FILE" ]; then
