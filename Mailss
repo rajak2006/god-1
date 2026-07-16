@@ -1,3 +1,7 @@
+Additionally, I have one more question regarding operators. The vendor operator is available in the Red Hat Operator Catalog, but I could not find it in our lab OpenShift OperatorHub after verifying. Is there a process to have this operator added or made available in our lab OpenShift environment? If so, could you please guide me on the required process or the team responsible for enabling it?
+
+Your guidance will help us document the deployment process correctly and align with the organization's security standards.
+
 
 Here's a concise summary you can use in a design or deployment document.
 
