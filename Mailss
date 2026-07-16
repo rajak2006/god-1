@@ -1,0 +1,90 @@
+
+Here's a concise summary you can use in a design or deployment document.
+
+TLS Certificate Requirements for OpenShift Deployment
+
+Two TLS certificates are required for the application.
+
+1. Webhook TLS Certificate (Internal)
+
+Purpose
+
+Secures communication between the OpenShift/Kubernetes API server and the mstr-operator-webhook service.
+Required by the ValidatingWebhookConfiguration.
+
+Recommended approach
+
+Use the OpenShift Service CA Operator.
+It automatically:
+Generates the serving certificate.
+Includes the required service DNS SANs.
+Rotates the certificate before expiration.
+The generated certificate is stored as a Kubernetes Secret and mounted into the webhook pod.
+
+Alternative
+
+If Service CA cannot be used, the customer can provide a manually created TLS Secret containing a certificate issued by their internal PKI.
+
+Who typically owns this?
+
+OpenShift Platform Team (preferred using Service CA).
+Enterprise PKI/Security Team if manually issued certificates are required.
+2. API and Web GUI TLS Certificate (External)
+
+Purpose
+
+Secures HTTPS access to the API and Web GUI through an OpenShift Route or Ingress.
+Used by external users and clients.
+
+Recommended approach
+
+Provide a certificate issued for the application's external hostname (for example, cmc.company.com).
+Store it as a Kubernetes TLS Secret and reference it from the OpenShift Route or application deployment.
+
+Alternative
+
+If the application is exposed through the OpenShift default wildcard domain (*.apps.<cluster-domain>), the platform team may configure the Route to use the cluster's existing ingress certificate, eliminating the need for a separate application certificate.
+
+Who typically owns this?
+
+Enterprise PKI/Security Team (issues the certificate).
+OpenShift Platform Team (installs the Secret and configures the Route).
+Enterprise Responsibilities
+Team Responsibility
+OpenShift Platform Team Configure Service CA (if used), create Kubernetes Secrets, configure Routes, and deploy the application.
+Enterprise PKI/Security Team Issue certificates for external domains or internal certificates if Service CA is not used.
+Application Team Document the certificate requirements and reference the Secrets in the Helm chart or Operator configuration.
+Overall Recommendation
+Webhook certificate: Use the OpenShift Service CA Operator whenever possible. It is the OpenShift-native solution and automatically manages certificate lifecycle.
+API/Web GUI certificate: Use a customer-managed certificate issued by the organization's PKI for the external hostname, or reuse the OpenShift ingress certificate when exposing the application through the cluster's default Route domain.
+
+This approach minimizes manual certificate management while aligning with OpenShift best practices.
+
+Here's a professional and simple email draft:
+
+PFA a draft you can send to your Security/PKI team.
+
+Hello Team,
+
+We are working on deploying our application on an OpenShift cluster and require guidance on provisioning the TLS certificates needed for the deployment.
+
+We need two certificates:
+
+Webhook TLS Certificate – Used to secure communication between the OpenShift API server and the validating webhook service.
+API/Web GUI TLS Certificate – Used to secure external HTTPS access to the application through an OpenShift Route.
+
+Previously, these certificates were automatically managed by Cert-Manager. In the current deployment model, the customer is responsible for providing and managing the certificates as Kubernetes Secrets.
+
+Could you please advise on the following:
+
+What is the standard process in our organization for obtaining these certificates?
+Can the webhook certificate be generated using the OpenShift Service CA Operator, or should it also be issued by the enterprise PKI team?
+For the API/Web GUI certificate, which team is responsible for issuing the certificate for the external hostname?
+Are there any internal guidelines or prerequisites we should follow?
+
+Your guidance will help us document the deployment process correctly and align with the organization's security standards.
+
+Thank you for your support.
+
+Kind regards,
+[Your Name]
