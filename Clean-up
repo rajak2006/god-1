@@ -1,3 +1,84 @@
+Yes — in that case, don't pass the password as a command-line argument. Let Bash prompt for it silently.
+
+Put this in your ~/.bashrc:
+
+ocplogin() {
+    local server="$1"
+
+    if [[ -z "$server" ]]; then
+        echo "Usage: ocplogin <server>"
+        return 1
+    fi
+
+    read -rsp "OCP Password: " password
+    echo
+
+    oc login -u test -p "$password" "https://api.${server}ocp.test.com"
+
+    unset password
+}
+
+
+Reload:
+
+source ~/.bashrc
+
+
+Then use:
+
+ocplogin example
+
+
+It will show:
+
+OCP Password:
+
+
+The password will not appear on the screen, and because you don't type it as part of the command, it won't be stored in Bash history.
+
+For another server:
+
+ocplogin test01
+
+
+It automatically connects to:
+
+https://api.test01ocp.test.com
+
+If you also want username configurable
+
+You can make the username a variable:
+
+export OCP_USER="test"
+
+ocplogin() {
+    local server="$1"
+    local password
+
+    if [[ -z "$server" ]]; then
+        echo "Usage: ocplogin <server>"
+        return 1
+    fi
+
+    read -rsp "OCP Password: " password
+    echo
+
+    oc login -u "$OCP_USER" -p "$password" "https://api.${server}ocp.test.com"
+
+    unset password
+}
+
+
+Then your workflow is simply:
+
+ocplogin example
+ocplogin test01
+ocplogin test02
+
+
+and the password is prompted securely each time.
+
+#₹₹#######
 #!/usr/bin/env bash
 
 # ============================================================
