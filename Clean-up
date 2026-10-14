@@ -1,3 +1,25 @@
+Email
+
+SubjectRequest for Permanent Resolution of Repeated AD Account Lockout Issue
+
+Hi Team,
+
+I am not sure why the investigation is focused on Unix server authentication access, as my primary concern is with my Windows Active Directory (AD) account. I am also not sure whether I currently have access to the Unix server.
+
+My actual issue is that, after recently changing my Windows AD password, my account frequently gets locked out with the error message **“ACCOUNT LOCKED OUT”** when I try to connect to the Citi VDI using my current password. As a result, I have to contact the Citi Helpdesk repeatedly to get my account unlocked.
+
+It seems that there may be an issue with AD password synchronization or some other process that is triggering repeated account lockouts.
+
+You also mentioned that my ID is connecting to an artifact repository. However, I have not hardcoded my credentials anywhere, and I am not sure what is causing this connection or whether it is related to the account lockout issue.
+
+Could you please investigate the actual root cause, verify whether any service, application, or stored credentials are triggering the repeated lockouts, and check whether there is any AD synchronization issue?
+
+I request you to focus on resolving the Windows AD account lockout issue and provide a permanent solution, rather than limiting the investigation to Unix server authentication access.
+
+Please let me know if you need any additional information from my side.
+
+Thanks and regards, \[Your Name\]
+
 Yes — in that case, don't pass the password as a command-line argument. Let Bash prompt for it silently.
 
 Put this in your ~/.bashrc:
